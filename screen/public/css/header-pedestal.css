@@ -1,0 +1,116 @@
+/* 顶部主标题托底 — 仅新增文件，不修改 index.css */
+
+/* 借鉴稿为 min-height 88px 的托底区：抬高页眉并同步主内容区高度，避免与图表区重叠（原 70px + calc(100% - 75px)） */
+.header {
+  height: 88px;
+  min-height: 88px;
+}
+
+/* 与 88px 页眉对齐并铺满剩余高度，避免原先 93px 与 88px 不一致造成的底部留白，模块整体可更高 */
+.content {
+  top: 88px;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 88px);
+  box-sizing: border-box;
+}
+
+.header .top {
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 2fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 4px 18px 8px;
+  position: relative;
+  z-index: 2;
+}
+
+.header .top-metrics {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.header .top-metrics-left {
+  justify-content: flex-end;
+}
+
+.header .top-metrics-right {
+  justify-content: flex-start;
+}
+
+.header .top-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.header .title-pedestal {
+  position: relative;
+  width: 100%;
+  min-height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px 8px;
+  transform: translateY(-8px);
+}
+
+.header .pedestal-bg {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% + 48px);
+  max-width: 1040px;
+  height: 48px;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.header .pedestal-bg .pedestal-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: 1;
+}
+
+.header .title-pedestal h1 {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  max-width: 100%;
+  padding: 0 8px;
+  font-size: clamp(30px, 2.75vw, 44px);
+  line-height: 1.2;
+  text-align: center;
+  color: #f5fdff;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-shadow:
+    0 0 12px rgba(80, 200, 255, 0.95),
+    0 0 30px rgba(0, 160, 255, 0.6),
+    0 0 52px rgba(0, 120, 220, 0.4);
+}
+
+/* 时间放入右侧栅格：取消原绝对定位；借鉴稿为 flex-start，用 margin-left:auto 贴齐屏右 */
+.header .top .header-time {
+  position: relative;
+  right: auto;
+  top: auto;
+  width: auto;
+  margin-left: auto;
+  line-height: 1.4;
+  text-align: right;
+  padding-right: 0;
+}
+
+.header .top .header-time span {
+  color: #ffffff;
+}

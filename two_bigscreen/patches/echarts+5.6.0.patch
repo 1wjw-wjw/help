@@ -1,0 +1,132 @@
+diff --git a/node_modules/echarts/lib/chart/map/MapSeries.js b/node_modules/echarts/lib/chart/map/MapSeries.js
+index e91604d..5734d41 100644
+--- a/node_modules/echarts/lib/chart/map/MapSeries.js
++++ b/node_modules/echarts/lib/chart/map/MapSeries.js
+@@ -123,7 +123,11 @@ var MapSeries = /** @class */function (_super) {
+     // Use value stored in data instead because it is calculated from multiple series
+     // FIXME Provide all value of multiple series ?
+     var data = this.getData();
+-    return data.get(data.mapDimension('value'), dataIndex);
++    if (!data || dataIndex == null || dataIndex < 0 || dataIndex >= data.count()) {
++      return null;
++    }
++    var valueDim = data.mapDimension('value');
++    return valueDim ? data.get(valueDim, dataIndex) : null;
+   };
+   /**
+    * Get model of region
+diff --git a/node_modules/echarts/lib/chart/sankey/SankeySeries.js b/node_modules/echarts/lib/chart/sankey/SankeySeries.js
+index 81cff68..3f3b0d1 100644
+--- a/node_modules/echarts/lib/chart/sankey/SankeySeries.js
++++ b/node_modules/echarts/lib/chart/sankey/SankeySeries.js
+@@ -155,9 +155,13 @@ var SankeySeriesModel = /** @class */function (_super) {
+   // Override Series.getDataParams()
+   SankeySeriesModel.prototype.getDataParams = function (dataIndex, dataType) {
+     var params = _super.prototype.getDataParams.call(this, dataIndex, dataType);
++    if (!params || params.dataIndex == null || params.dataIndex < 0) {
++      return params;
++    }
+     if (params.value == null && dataType === 'node') {
+       var node = this.getGraph().getNodeByIndex(dataIndex);
+-      var nodeValue = node.getLayout().value;
++      var nodeLayout = node && node.getLayout ? node.getLayout() : null;
++      var nodeValue = nodeLayout ? nodeLayout.value : null;
+       params.value = nodeValue;
+     }
+     return params;
+diff --git a/node_modules/echarts/lib/coord/axisAlignTicks.js b/node_modules/echarts/lib/coord/axisAlignTicks.js
+index 4c6616f..7cc2bf6 100644
+--- a/node_modules/echarts/lib/coord/axisAlignTicks.js
++++ b/node_modules/echarts/lib/coord/axisAlignTicks.js
+@@ -41,11 +41,10 @@
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+-import { getPrecisionSafe, round } from '../util/number.js';
++import { round } from '../util/number.js';
+ import IntervalScale from '../scale/Interval.js';
+ import { getScaleExtent } from './axisHelper.js';
+-import { warn } from '../util/log.js';
+-import { increaseInterval, isValueNice } from '../scale/helper.js';
++import { increaseInterval } from '../scale/helper.js';
+ var mathLog = Math.log;
+ export function alignScaleTicks(scale, axisModel, alignToScale) {
+   var intervalScaleProto = IntervalScale.prototype;
+@@ -126,12 +125,4 @@ export function alignScaleTicks(scale, axisModel, alignToScale) {
+   if (t0 || t1) {
+     intervalScaleProto.setNiceExtent.call(scale, min + interval, max - interval);
+   }
+-  if (process.env.NODE_ENV !== 'production') {
+-    var ticks = intervalScaleProto.getTicks.call(scale);
+-    if (ticks[1] && (!isValueNice(interval) || getPrecisionSafe(ticks[1].value) > getPrecisionSafe(interval))) {
+-      warn(
+-      // eslint-disable-next-line
+-      "The ticks may be not readable when set min: " + axisModel.get('min') + ", max: " + axisModel.get('max') + " and alignTicks: true");
+-    }
+-  }
+ }
+\ No newline at end of file
+diff --git a/node_modules/echarts/lib/model/mixin/dataFormat.js b/node_modules/echarts/lib/model/mixin/dataFormat.js
+index 1777fce..4e304fe 100644
+--- a/node_modules/echarts/lib/model/mixin/dataFormat.js
++++ b/node_modules/echarts/lib/model/mixin/dataFormat.js
+@@ -53,15 +53,57 @@ var DataFormatMixin = /** @class */function () {
+    */
+   DataFormatMixin.prototype.getDataParams = function (dataIndex, dataType) {
+     var data = this.getData(dataType);
++    var mainType = this.mainType;
++    var isSeries = mainType === 'series';
++    if (!data) {
++      return {
++        componentType: mainType,
++        componentSubType: this.subType,
++        componentIndex: this.componentIndex,
++        seriesType: isSeries ? this.subType : null,
++        seriesIndex: this.seriesIndex,
++        seriesId: isSeries ? this.id : null,
++        seriesName: isSeries ? this.name : null,
++        name: '',
++        dataIndex: -1,
++        data: null,
++        dataType: dataType,
++        value: null,
++        color: null,
++        borderColor: null,
++        dimensionNames: null,
++        encode: null,
++        $vars: ['seriesName', 'name', 'value']
++      };
++    }
+     var rawValue = this.getRawValue(dataIndex, dataType);
+     var rawDataIndex = data.getRawIndex(dataIndex);
++    if (rawDataIndex == null || rawDataIndex < 0) {
++      return {
++        componentType: mainType,
++        componentSubType: this.subType,
++        componentIndex: this.componentIndex,
++        seriesType: isSeries ? this.subType : null,
++        seriesIndex: this.seriesIndex,
++        seriesId: isSeries ? this.id : null,
++        seriesName: isSeries ? this.name : null,
++        name: '',
++        dataIndex: -1,
++        data: null,
++        dataType: dataType,
++        value: rawValue,
++        color: null,
++        borderColor: null,
++        dimensionNames: null,
++        encode: null,
++        $vars: ['seriesName', 'name', 'value']
++      };
++    }
+     var name = data.getName(dataIndex);
+     var itemOpt = data.getRawDataItem(dataIndex);
+     var style = data.getItemVisual(dataIndex, 'style');
+     var color = style && style[data.getItemVisual(dataIndex, 'drawType') || 'fill'];
+     var borderColor = style && style.stroke;
+-    var mainType = this.mainType;
+-    var isSeries = mainType === 'series';
+     var userOutput = data.userOutput && data.userOutput.get();
+     return {
+       componentType: mainType,
