@@ -1,0 +1,15 @@
+/* ========== 大屏整体入场动画（独立无副作用，可直接复用） ========== */
+/* 不用 opacity:0 起播，避免整页透明时透出白底闪屏；仅做透视+缩放，与全球/中国页切换观感接近 */
+.screen-animation {
+  transform-origin: 50% 40%;
+  animation: screenEnter 4.2s ease forwards;
+}
+
+@keyframes screenEnter {
+  from {
+    transform: rotateX(6deg) scale(1.03);
+  }
+  to {
+    transform: rotateX(0deg) scale(1);
+  }
+}
