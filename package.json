@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "scripts": {
+    "vercel-build": "npm --prefix bigbig_screen ci || npm --prefix bigbig_screen install && npm --prefix two_bigscreen ci || npm --prefix two_bigscreen install && npm --prefix screen ci || npm --prefix screen install && npm --prefix bigbig_screen run build && npm --prefix two_bigscreen run build && npm --prefix screen run build && rm -rf public_out && mkdir -p public_out/bigbig_screen public_out/two_bigscreen public_out/screen && cp -r bigbig_screen/dist/* public_out/bigbig_screen/ && cp -r two_bigscreen/dist/* public_out/two_bigscreen/ && cp -r screen/dist/* public_out/screen/ && cp index.html public_out/index.html"
+  }
+}
