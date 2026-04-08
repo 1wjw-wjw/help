@@ -86,8 +86,12 @@ function navigateToOtherScreen() {
     window.location.assign(override)
     return
   }
-  const { protocol, hostname } = window.location
-  window.location.assign(`${protocol}//${hostname}:${CHINA_DEV_PORT}/`)
+  if (import.meta.env.DEV) {
+    const { protocol, hostname } = window.location
+    window.location.assign(`${protocol}//${hostname}:${CHINA_DEV_PORT}/`)
+    return
+  }
+  window.location.assign('/two_bigscreen/')
 }
 
 function navigateToProvincesScreen() {
@@ -96,8 +100,12 @@ function navigateToProvincesScreen() {
     window.location.assign(override)
     return
   }
-  const { protocol, hostname } = window.location
-  window.location.assign(`${protocol}//${hostname}:${PROVINCES_DEV_PORT}/`)
+  if (import.meta.env.DEV) {
+    const { protocol, hostname } = window.location
+    window.location.assign(`${protocol}//${hostname}:${PROVINCES_DEV_PORT}/`)
+    return
+  }
+  window.location.assign('/screen/')
 }
 
 const WHO_REGION_MAP = {

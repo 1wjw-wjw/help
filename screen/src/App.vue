@@ -144,8 +144,12 @@ function navigateToGlobalScreen() {
     window.location.assign(override)
     return
   }
-  const { protocol, hostname } = window.location
-  window.location.assign(`${protocol}//${hostname}:${GLOBAL_DEV_PORT}/`)
+  if (import.meta.env.DEV) {
+    const { protocol, hostname } = window.location
+    window.location.assign(`${protocol}//${hostname}:${GLOBAL_DEV_PORT}/`)
+    return
+  }
+  window.location.assign('/bigbig_screen/')
 }
 
 function navigateToChinaScreen() {
@@ -154,8 +158,12 @@ function navigateToChinaScreen() {
     window.location.assign(override)
     return
   }
-  const { protocol, hostname } = window.location
-  window.location.assign(`${protocol}//${hostname}:${CHINA_DEV_PORT}/`)
+  if (import.meta.env.DEV) {
+    const { protocol, hostname } = window.location
+    window.location.assign(`${protocol}//${hostname}:${CHINA_DEV_PORT}/`)
+    return
+  }
+  window.location.assign('/two_bigscreen/')
 }
 
 const timeRef = ref(null)

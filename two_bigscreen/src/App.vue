@@ -73,8 +73,12 @@ const switchToGlobalScreen = () => {
     window.location.assign(override);
     return;
   }
-  const { protocol, hostname } = window.location;
-  window.location.assign(`${protocol}//${hostname}:${GLOBAL_DEV_PORT}/`);
+  if (import.meta.env.DEV) {
+    const { protocol, hostname } = window.location;
+    window.location.assign(`${protocol}//${hostname}:${GLOBAL_DEV_PORT}/`);
+    return;
+  }
+  window.location.assign('/bigbig_screen/');
 };
 
 const switchToProvincesScreen = () => {
@@ -83,8 +87,12 @@ const switchToProvincesScreen = () => {
     window.location.assign(override);
     return;
   }
-  const { protocol, hostname } = window.location;
-  window.location.assign(`${protocol}//${hostname}:${PROVINCES_DEV_PORT}/`);
+  if (import.meta.env.DEV) {
+    const { protocol, hostname } = window.location;
+    window.location.assign(`${protocol}//${hostname}:${PROVINCES_DEV_PORT}/`);
+    return;
+  }
+  window.location.assign('/screen/');
 };
 
 /** 安全解析数值，非法时返回 0 */
