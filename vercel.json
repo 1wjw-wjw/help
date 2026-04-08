@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "routes": [
+    { "handle": "filesystem" },
+
+    { "src": "^/bigbig_screen/?$", "status": 308, "headers": { "Location": "/global-screen/" } },
+    { "src": "^/two_bigscreen/?$", "status": 308, "headers": { "Location": "/china-screen/" } },
+    { "src": "^/screen/?$", "status": 308, "headers": { "Location": "/province-screen/" } },
+
+    { "src": "^/bigbig_screen/(.*)$", "status": 308, "headers": { "Location": "/global-screen/$1" } },
+    { "src": "^/two_bigscreen/(.*)$", "status": 308, "headers": { "Location": "/china-screen/$1" } },
+    { "src": "^/screen/(.*)$", "status": 308, "headers": { "Location": "/province-screen/$1" } },
+
+    { "src": "^/global-screen(?:/.*)?$", "dest": "/global-screen/index.html" },
+    { "src": "^/china-screen(?:/.*)?$", "dest": "/china-screen/index.html" },
+    { "src": "^/province-screen(?:/.*)?$", "dest": "/province-screen/index.html" },
+
+    { "src": "^/$", "dest": "/index.html" }
+  ]
+}

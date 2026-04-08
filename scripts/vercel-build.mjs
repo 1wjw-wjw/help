@@ -5,7 +5,11 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
-const apps = ['bigbig_screen', 'two_bigscreen', 'screen']
+const apps = [
+  { source: 'apps/global-screen', output: 'global-screen' },
+  { source: 'apps/china-screen', output: 'china-screen' },
+  { source: 'apps/province-screen', output: 'province-screen' }
+]
 const outputDir = path.join(rootDir, 'public_out')
 
 function run(command, args, cwd = rootDir) {
@@ -21,9 +25,9 @@ function run(command, args, cwd = rootDir) {
 }
 
 for (const app of apps) {
-  const appDir = path.join(rootDir, app)
+  const appDir = path.join(rootDir, app.source)
   if (!existsSync(path.join(appDir, 'package.json'))) {
-    throw new Error(`Missing package.json in ${app}`)
+    throw new Error(`Missing package.json in ${app.source}`)
   }
 
   // Install in CI mode first for deterministic builds; fallback to install if needed.
@@ -43,8 +47,8 @@ rmSync(outputDir, { recursive: true, force: true })
 mkdirSync(outputDir, { recursive: true })
 
 for (const app of apps) {
-  const distDir = path.join(rootDir, app, 'dist')
-  const targetDir = path.join(outputDir, app)
+  const distDir = path.join(rootDir, app.source, 'dist')
+  const targetDir = path.join(outputDir, app.output)
 
   if (!existsSync(distDir)) {
     throw new Error(`Build output not found: ${distDir}`)

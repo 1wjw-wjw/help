@@ -1,6 +1,11 @@
 {
+  "name": "health-dashboard",
   "private": true,
   "scripts": {
+    "dev:global": "npm --prefix apps/global-screen run dev",
+    "dev:china": "npm --prefix apps/china-screen run dev",
+    "dev:province": "npm --prefix apps/province-screen run dev",
+    "dev:all": "node ./scripts/dev-all.mjs",
     "vercel-build": "node ./scripts/vercel-build.mjs"
   }
 }
