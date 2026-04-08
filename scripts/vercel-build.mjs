@@ -17,8 +17,6 @@ const globalCsvFiles = [
   'WHO_Region_Mean_Resource_Demand_Gap_2023.csv',
   'Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv'
 ]
-const isCI = Boolean(process.env.CI || process.env.VERCEL)
-
 function run(command, args, cwd = rootDir) {
   const result = spawnSync(command, args, {
     cwd,
@@ -31,17 +29,25 @@ function run(command, args, cwd = rootDir) {
   }
 }
 
+function tryRun(command, args, cwd = rootDir) {
+  return spawnSync(command, args, {
+    cwd,
+    stdio: 'inherit',
+    shell: process.platform === 'win32'
+  })
+}
+
 for (const app of apps) {
   const appDir = path.join(rootDir, app.source)
   if (!existsSync(path.join(appDir, 'package.json'))) {
     throw new Error(`Missing package.json in ${app.source}`)
   }
 
-  // On local Windows, npm ci may fail with EPERM when native binaries are locked.
-  // Keep deterministic installs on CI/Vercel, but use npm install locally.
-  if (isCI) {
-    run('npm', ['ci'], appDir)
-  } else {
+  // Prefer deterministic installs with npm ci.
+  // Fallback to npm install when lockfile/state causes ci failure.
+  const ciResult = tryRun('npm', ['ci'], appDir)
+  if (ciResult.status !== 0) {
+    console.warn(`[vercel-build] npm ci failed in ${app.source}, fallback to npm install`)
     run('npm', ['install'], appDir)
   }
 
