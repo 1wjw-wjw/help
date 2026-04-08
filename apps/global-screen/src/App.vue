@@ -72,6 +72,7 @@ let refreshTimer = null
 let playTimer = null
 let worldMapReady = false
 const EXTERNAL_DATA_DIR = '/@fs/e:/cursor/projects/bigbig_screen'
+const asset = (relativePath) => `${import.meta.env.BASE_URL}${relativePath}`
 const CHART_ANIM_MS = 3200
 let isFirstPaint = true
 
@@ -874,6 +875,7 @@ function renderZeroCharts() {
 
 async function loadAllData() {
   const healthCandidates = [
+    asset('health_datas.csv'),
     '/health_datas.csv',
     './health_datas.csv',
     '../health_datas.csv',
@@ -881,6 +883,7 @@ async function loadAllData() {
     `${EXTERNAL_DATA_DIR}/health_datas.csv`
   ]
   const lisaCandidates = [
+    asset('lisa_cluster_result_knn5.csv'),
     '/lisa_cluster_result_knn5.csv',
     './lisa_cluster_result_knn5.csv',
     '../lisa_cluster_result_knn5.csv',
@@ -888,6 +891,7 @@ async function loadAllData() {
     `${EXTERNAL_DATA_DIR}/lisa_cluster_result_knn5.csv`
   ]
   const whoGapCandidates = [
+    asset('WHO_Region_Mean_Resource_Demand_Gap_2023.csv'),
     '/WHO_Region_Mean_Resource_Demand_Gap_2023.csv',
     './WHO_Region_Mean_Resource_Demand_Gap_2023.csv',
     '../WHO_Region_Mean_Resource_Demand_Gap_2023.csv',
@@ -895,6 +899,7 @@ async function loadAllData() {
     `${EXTERNAL_DATA_DIR}/WHO_Region_Mean_Resource_Demand_Gap_2023.csv`
   ]
   const trendCandidates = [
+    asset('Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv'),
     '/Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv',
     './Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv',
     '../Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv',
@@ -918,7 +923,7 @@ async function loadAllData() {
 async function ensureWorldMap() {
   if (worldMapReady) return
   try {
-    const res = await fetch('/world.geo.json')
+    const res = await fetch(asset('world.geo.json'))
     if (res.ok) {
       const geoJson = await res.json()
       echarts.registerMap('world', geoJson)

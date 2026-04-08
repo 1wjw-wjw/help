@@ -11,6 +11,12 @@ const apps = [
   { source: 'apps/province-screen', output: 'province-screen' }
 ]
 const outputDir = path.join(rootDir, 'public_out')
+const globalCsvFiles = [
+  'health_datas.csv',
+  'lisa_cluster_result_knn5.csv',
+  'WHO_Region_Mean_Resource_Demand_Gap_2023.csv',
+  'Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv'
+]
 
 function run(command, args, cwd = rootDir) {
   const result = spawnSync(command, args, {
@@ -56,6 +62,15 @@ for (const app of apps) {
 
   mkdirSync(targetDir, { recursive: true })
   cpSync(distDir, targetDir, { recursive: true })
+}
+
+// Global screen reads these CSV files at runtime; include them under the same subpath output.
+for (const fileName of globalCsvFiles) {
+  const src = path.join(rootDir, fileName)
+  const dest = path.join(outputDir, 'global-screen', fileName)
+  if (existsSync(src)) {
+    cpSync(src, dest)
+  }
 }
 
 const rootIndexPath = path.join(rootDir, 'index.html')

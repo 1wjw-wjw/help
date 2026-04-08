@@ -66,6 +66,7 @@ let onResize = null;
 
 const GLOBAL_DEV_PORT = 5172;
 const PROVINCES_DEV_PORT = 5174;
+const asset = (relativePath) => `${import.meta.env.BASE_URL}${relativePath}`;
 
 const switchToGlobalScreen = () => {
   const override = import.meta.env.VITE_GLOBAL_SCREEN_URL;
@@ -682,11 +683,11 @@ const startPlay = () => {
 /** 并行加载各 CSV 到 state.raw */
 const loadData = async () => {
   const [a, c, u, r, m] = await Promise.all([
-    axios.get('/data/province_aging_rate.csv'),
-    axios.get('/data/population_center_shift.csv'),
-    axios.get('/data/u3_health_resource_allocation.csv'),
-    axios.get('/data/resident_health_indicators.csv'),
-    axios.get('/data/medical_health_indicators.csv')
+    axios.get(asset('data/province_aging_rate.csv')),
+    axios.get(asset('data/population_center_shift.csv')),
+    axios.get(asset('data/u3_health_resource_allocation.csv')),
+    axios.get(asset('data/resident_health_indicators.csv')),
+    axios.get(asset('data/medical_health_indicators.csv'))
   ]);
   state.raw.aging = parseCSV(a.data);
   state.raw.center = parseCSV(c.data);

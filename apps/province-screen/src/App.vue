@@ -221,8 +221,8 @@ onMounted(() => {
     'https://cdnjs.cloudflare.com/ajax/libs/echarts/4.3.0/echarts.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/jquery/1.10.2/jquery.min.js',
     'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
-    '/js/china.js',
-    '/js/index.js'
+    `${import.meta.env.BASE_URL}js/china.js`,
+    `${import.meta.env.BASE_URL}js/index.js`
   ]
 
   loadScriptsSequential(urls).catch((e) => {
@@ -243,11 +243,6 @@ onUnmounted(() => {
 </script>
 
 <style>
-@import '/css/index.css';
-@import '/css/header-pedestal.css';
-@import '/css/star-background.css';
-@import '/css/screen-enter.css';
-@import '/css/screen-switch-buttons.css';
 
 html,
 body,
