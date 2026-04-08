@@ -17,6 +17,7 @@ const globalCsvFiles = [
   'WHO_Region_Mean_Resource_Demand_Gap_2023.csv',
   'Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv'
 ]
+const isCI = Boolean(process.env.CI || process.env.VERCEL)
 
 function run(command, args, cwd = rootDir) {
   const result = spawnSync(command, args, {
@@ -36,13 +37,11 @@ for (const app of apps) {
     throw new Error(`Missing package.json in ${app.source}`)
   }
 
-  // Install in CI mode first for deterministic builds; fallback to install if needed.
-  const ciResult = spawnSync('npm', ['ci'], {
-    cwd: appDir,
-    stdio: 'inherit',
-    shell: process.platform === 'win32'
-  })
-  if (ciResult.status !== 0) {
+  // On local Windows, npm ci may fail with EPERM when native binaries are locked.
+  // Keep deterministic installs on CI/Vercel, but use npm install locally.
+  if (isCI) {
+    run('npm', ['ci'], appDir)
+  } else {
     run('npm', ['install'], appDir)
   }
 
