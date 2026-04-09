@@ -37,6 +37,15 @@ function tryRun(command, args, cwd = rootDir) {
   })
 }
 
+function injectGhPagesScript(htmlPath) {
+  if (!existsSync(htmlPath)) return
+  const content = readFileSync(htmlPath, 'utf8')
+  const tag = '<script src="./gh-pages.js"></script>'
+  if (content.includes(tag)) return
+  const next = content.includes('</head>') ? content.replace('</head>', `  ${tag}\n</head>`) : `${content}\n${tag}\n`
+  writeFileSync(htmlPath, next)
+}
+
 for (const app of apps) {
   const appDir = path.join(rootDir, app.source)
   if (!existsSync(path.join(appDir, 'package.json'))) {
@@ -96,6 +105,18 @@ if (existsSync(rootNojekyllPath)) {
   writeFileSync(outNojekyllPath, readFileSync(rootNojekyllPath))
 } else {
   writeFileSync(outNojekyllPath, '')
+}
+
+const rootGhPagesScriptPath = path.join(rootDir, 'gh-pages.js')
+const outGhPagesScriptPath = path.join(outputDir, 'gh-pages.js')
+if (existsSync(rootGhPagesScriptPath)) {
+  writeFileSync(outGhPagesScriptPath, readFileSync(rootGhPagesScriptPath))
+}
+
+injectGhPagesScript(path.join(outputDir, 'index.html'))
+injectGhPagesScript(path.join(outputDir, '404.html'))
+for (const app of apps) {
+  injectGhPagesScript(path.join(outputDir, app.output, 'index.html'))
 }
 
 const docsDir = path.join(rootDir, 'docs')
