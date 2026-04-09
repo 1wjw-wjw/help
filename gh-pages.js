@@ -64,6 +64,56 @@
       }
       return nativeOpen.call(window, url, target, features)
     }
+
+    var loc = window.location
+    try {
+      var nativeAssign = loc.assign.bind(loc)
+      loc.assign = function (url) {
+        if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(REPO_PREFIX + '/')) {
+          var cleanAssign = url.split('?')[0].split('#')[0]
+          url = url.replace(cleanAssign, withRepoPrefix(cleanAssign))
+        }
+        return nativeAssign(url)
+      }
+    } catch (_e) {}
+
+    try {
+      var nativeReplace = loc.replace.bind(loc)
+      loc.replace = function (url) {
+        if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(REPO_PREFIX + '/')) {
+          var cleanReplace = url.split('?')[0].split('#')[0]
+          url = url.replace(cleanReplace, withRepoPrefix(cleanReplace))
+        }
+        return nativeReplace(url)
+      }
+    } catch (_e) {}
+
+    try {
+      var proto = window.Location && window.Location.prototype
+      if (proto) {
+        var protoAssign = proto.assign
+        if (typeof protoAssign === 'function') {
+          proto.assign = function (url) {
+            if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(REPO_PREFIX + '/')) {
+              var cleanProtoAssign = url.split('?')[0].split('#')[0]
+              url = url.replace(cleanProtoAssign, withRepoPrefix(cleanProtoAssign))
+            }
+            return protoAssign.call(this, url)
+          }
+        }
+
+        var protoReplace = proto.replace
+        if (typeof protoReplace === 'function') {
+          proto.replace = function (url) {
+            if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(REPO_PREFIX + '/')) {
+              var cleanProtoReplace = url.split('?')[0].split('#')[0]
+              url = url.replace(cleanProtoReplace, withRepoPrefix(cleanProtoReplace))
+            }
+            return protoReplace.call(this, url)
+          }
+        }
+      }
+    } catch (_e) {}
   }
 
   rewriteIfNeeded()
