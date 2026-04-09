@@ -81,3 +81,7 @@ for (const fileName of globalCsvFiles) {
 const rootIndexPath = path.join(rootDir, 'index.html')
 const outIndexPath = path.join(outputDir, 'index.html')
 writeFileSync(outIndexPath, readFileSync(rootIndexPath))
+
+const docsDir = path.join(rootDir, 'docs')
+rmSync(docsDir, { recursive: true, force: true })
+cpSync(outputDir, docsDir, { recursive: true })
