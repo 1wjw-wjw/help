@@ -560,27 +560,33 @@ function setWorldHeatMap() {
   const chart = chartInstances.worldHeat
   if (!chart || !worldMapReady) return
   const yearRows = healthRows.value.filter((r) => Number(r.year) === Number(currentYear.value))
-  const data = yearRows.map((r) => ({ name: r.country, value: parseNumeric(r.U3_Physicians_per_1000) }))
-  const max = Math.max(...data.map((d) => d.value), 1)
+  const data = yearRows.map((r) => ({ name: r.country, value: parseNumeric(r.D_Value) }))
+  const allDValues = healthRows.value.map((r) => parseNumeric(r.D_Value)).filter((n) => Number.isFinite(n))
+  const globalMin = allDValues.length ? Math.min(...allDValues) : 0
+  const globalMax = allDValues.length ? Math.max(...allDValues) : 1
+  const safeMin = Number.isFinite(globalMin) ? globalMin : 0
+  const safeMax = Number.isFinite(globalMax) && globalMax > safeMin ? globalMax : safeMin + 1
   chart.setOption({
-    ...getCommonChartBase(`世界地图·每千人医生数（${currentYear.value}年）热力`),
+    ...getCommonChartBase(`全球健康系统韧性时空演变 · 耦合协调度D值空间格局变化热力图（${currentYear.value}年）`),
     tooltip: {
       ...getCommonChartBase('').tooltip,
       formatter: ({ name, value }) => {
         const row = yearRows.find((r) => r.country === name)
-        if (!row) return `${name}<br/>每千人医生数: 0`
-        return `${name}<br/>每千人医生数: ${parseNumeric(value).toFixed(3)}<br/>预期寿命: ${parseNumeric(row.U3_Life_Expectancy).toFixed(2)}`
+        if (!row) return `${name}<br/>D值: 0`
+        return `${name}<br/>D值: ${parseNumeric(value).toFixed(3)}<br/>预期寿命: ${parseNumeric(row.U3_Life_Expectancy).toFixed(2)}`
       }
     },
     visualMap: {
-      min: 0,
-      max,
+      min: safeMin,
+      max: safeMax,
       right: 14,
       bottom: 18,
       text: ['高', '低'],
       textStyle: { color: '#81a1c1' },
       calculable: true,
-      inRange: { color: ['#00f0ff', '#0066ff', '#001a8f'] }
+      inRange: {
+        color: ['#0b1f4f', '#1f53d7', '#3aa6ff', '#6ff7ff', '#f2ff8a']
+      }
     },
     series: [
       {
