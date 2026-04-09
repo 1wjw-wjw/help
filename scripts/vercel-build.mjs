@@ -82,6 +82,22 @@ const rootIndexPath = path.join(rootDir, 'index.html')
 const outIndexPath = path.join(outputDir, 'index.html')
 writeFileSync(outIndexPath, readFileSync(rootIndexPath))
 
+// GitHub Pages: publish root is docs/; need 404.html for SPA-style fallback and .nojekyll to disable Jekyll.
+const root404Path = path.join(rootDir, '404.html')
+if (existsSync(root404Path)) {
+  writeFileSync(path.join(outputDir, '404.html'), readFileSync(root404Path))
+} else {
+  writeFileSync(path.join(outputDir, '404.html'), readFileSync(rootIndexPath))
+}
+
+const rootNojekyllPath = path.join(rootDir, '.nojekyll')
+const outNojekyllPath = path.join(outputDir, '.nojekyll')
+if (existsSync(rootNojekyllPath)) {
+  writeFileSync(outNojekyllPath, readFileSync(rootNojekyllPath))
+} else {
+  writeFileSync(outNojekyllPath, '')
+}
+
 const docsDir = path.join(rootDir, 'docs')
 rmSync(docsDir, { recursive: true, force: true })
 cpSync(outputDir, docsDir, { recursive: true })
