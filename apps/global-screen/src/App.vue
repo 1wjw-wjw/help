@@ -1266,15 +1266,21 @@ async function loadAllData() {
     `${EXTERNAL_DATA_DIR}/Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv`
   ]
   const clusterCandidates = [
-    '/@fs/e:/cursor/projects/health-dashboard/apps/china-screen/xinzeng/tihuanquanqiu/initial_year_country_clusters_k4.csv',
+    asset('data/initial_year_country_clusters_k4.csv'),
+    '/data/initial_year_country_clusters_k4.csv',
+    './data/initial_year_country_clusters_k4.csv',
     `${EXTERNAL_DATA_DIR}/initial_year_country_clusters_k4.csv`
   ]
   const clusterSummaryCandidates = [
-    '/@fs/e:/cursor/projects/health-dashboard/apps/china-screen/xinzeng/tihuanquanqiu/cluster_summary_k4_initial_year.csv',
+    asset('data/cluster_summary_k4_initial_year.csv'),
+    '/data/cluster_summary_k4_initial_year.csv',
+    './data/cluster_summary_k4_initial_year.csv',
     `${EXTERNAL_DATA_DIR}/cluster_summary_k4_initial_year.csv`
   ]
   const representativeProfileCandidates = [
-    '/@fs/e:/cursor/projects/health-dashboard/apps/china-screen/xinzeng/tihuanquanqiu/representative_country_profiles.csv',
+    asset('data/representative_country_profiles.csv'),
+    '/data/representative_country_profiles.csv',
+    './data/representative_country_profiles.csv',
     `${EXTERNAL_DATA_DIR}/representative_country_profiles.csv`
   ]
   const [health, lisa, whoGap, trend, clusters, clusterSummary, representativeProfiles] = await Promise.all([
