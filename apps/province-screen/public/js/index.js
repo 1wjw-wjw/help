@@ -25,7 +25,7 @@
 
 })
 
-var PROVINCE_PANEL_CSV_URL = '/data/province-screen/panel_data_tobit.csv';
+var PROVINCE_PANEL_CSV_URL = 'data/province-screen/panel_data_tobit.csv';
 var __provincePanelRowsCache = null;
 var __provincePanelRowsPromise = null;
 var __provinceYear = '2012';
@@ -440,7 +440,7 @@ function qipao(){
         myChart.setOption(buildOption(_parsed, year), true);
     }
 
-    fetch('/data/DEA_health_results.csv')
+    fetch('data/DEA_health_results.csv')
         .then(function(res){
             if(!res.ok) throw new Error('加载失败：'+res.status);
             return res.text();
@@ -1378,7 +1378,7 @@ function zhexian() {
 
     var legendNames = ['千人床位', '千人医师', '千人护士', '儿童管理率', '预期寿命'];
 
-    fetch(encodeURI('/data/province-screen/panel_data_tobit.csv'))
+    fetch(encodeURI('data/province-screen/panel_data_tobit.csv'))
         .then(function (res) {
             if (!res.ok) throw new Error('加载失败：' + res.status);
             return res.text();
