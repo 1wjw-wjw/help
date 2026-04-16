@@ -205,7 +205,7 @@ body{
 .panel-info-control {
     position: absolute;
     right: 10px;
-    top: 10px;
+    top: 4px;
     z-index: 2147483000;
 }
 

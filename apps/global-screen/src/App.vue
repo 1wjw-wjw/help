@@ -71,7 +71,6 @@ let clockTimer = null
 let refreshTimer = null
 let playTimer = null
 let worldMapReady = false
-const EXTERNAL_DATA_DIR = '/@fs/e:/cursor/projects/bigbig_screen'
 const asset = (relativePath) => `${import.meta.env.BASE_URL}${relativePath}`
 const CHART_ANIM_MS = 3200
 let isFirstPaint = true
@@ -200,49 +199,49 @@ const representativeProfileRows = ref([])
 const moduleText = {
   whoGap: {
     explain:
-      '该图用于比较 WHO 六大区域在 2023 年资源需求缺口的平均水平。柱体正负反映缺口方向，绝对值反映结构压力强弱：缺口越大说明需要优先补足的资源缺口越明显，据此形成区域治理优先序。',
+      '该图比较 WHO 六大区域在 2023 年资源需求缺口的平均水平。图中柱体正负反映缺口方向、柱高反映缺口规模：柱高越大说明该区域资源供给与需求的错配越突出，因此可以据此识别“缺口更需要优先补足”的区域优先序，并判断哪些区域更可能在后续协同提升中成为短板来源。',
     conclusion:
       '论文显示全球协同水平虽在提升，但区域分异长期存在。资源端约束在多数国家普遍可见，区域层面同样体现明显不均衡，需按区域差异开展针对性补短板。'
   },
   trend: {
     explain:
-      '该图展示 2000—2023 年全球需求水平、资源水平与资源缺口的动态演化。通过三条序列相对位置的变化，可观察资源投入与健康结果改善在时间维度上的匹配程度；同时用于识别长期上升与阶段性拐点，而非单一国家横向比较。',
+      '该图展示 2000—2023 年全球需求水平、资源水平与资源缺口的动态变化。通过观察三条序列随时间的相对高低，可以判断资源投入对需求变化的追赶程度：当资源水平更充分地跟进需求时，资源缺口更容易收敛；反之缺口扩大的阶段说明资源转化与结构适配仍受约束。因而该图既用于识别长期趋势，也用于捕捉关键阶段的匹配程度变化。',
     conclusion:
       '论文结果表明全球三系统协调度总体上升，但后期增幅趋缓。资源投入与健康结果改善并非线性同步，资源转化效率与结构适配仍是关键约束。'
   },
   riskDonut: {
     explain:
-      '该图展示主要健康风险因素在样本国家中的相对占比结构。占比差异反映各风险在“风险暴露—健康损失”链条中的权重高低，从而提示治理应优先聚焦占比更高、影响更集中的风险类型，并在结构干预中形成差异化路径。',
+      '该图展示主要健康风险因素在样本国家中的相对占比结构。占比越高的风险类型在“风险暴露—健康损失”的链条中权重越大，说明总体风险结构更依赖这些因素；因此图中占比差异能够识别更“主导”的风险类型，并为风险治理的优先级提供数据依据，提示应在结构干预中采取差异化策略。',
     conclusion:
       '论文指出风险暴露会显著传导至健康损失，且在资源不足情景下影响更强。风险治理应从“总量控制”转向“结构干预”，按风险类型实施差异化策略。'
   },
   worldHeat: {
     explain:
-      '该图按年份展示全球三系统耦合协调度 D 值的空间分布，颜色越深代表协同水平越高。结合时间轴可以从整体上判断：高值区与低值区在演化中保持相对稳定的空间层级，同时总体协同水平随时间呈提升趋势。',
+      '该图按年份展示全球三系统耦合协调度 D 值的空间分布，颜色深浅对应协同水平高低。通过观察时间维度，可读出高值区与低值区在演化中维持相对稳定的位置格局，同时总体协同水平随年份呈提升，这说明全球改善呈现“缓慢抬升 + 空间分层持续”的数据特征。',
     conclusion:
       '论文显示高值区主要在欧洲、北美和大洋洲，低值区更多位于撒哈拉以南非洲及南亚部分地区。全球平均 D 值总体提升，但空间分层特征仍持续存在。'
   },
   lisa: {
     explain:
-      '该图用于识别 2023 年 D 值在局部空间上的集聚关系。图中呈现的“高值集聚/低值集聚”说明协同差异并非随机分布，而是存在局部空间联动：高值区域在周边更易延续、低值区域则更易形成连续低位，从而反映稳定的空间依赖结构。',
+      '该图用于识别 2023 年 D 值在局部空间上的集聚关系。图中呈现的“高值集聚/低值集聚”空间分布表明协同差异并非随机，而是存在显著的空间依赖：高值更倾向于在邻近区域延续、低值更容易形成连片的低位区域，从而解释协同差异为何会长期存在。',
     conclusion:
       '论文中 Moran’s I 检验结果显著，说明全球协同差异存在稳定空间依赖。欧洲高值集聚明显、撒哈拉以南非洲低值集聚突出，中国周边高值联动仍有提升空间。'
   },
   stack: {
     explain:
-      '该图按四种国家结构类型选取代表国家，展示 D 值与三类结构差值指标的堆叠画像。堆叠中各差值指标的正负与高度共同刻画了不同类型国家的“相对优势—短板来源”，因此可用于比较各类型内部结构特征差异，而不仅是单点水平高低。',
+      '该图按四种国家结构类型选取代表国家，展示 D 值与三类结构差值指标的堆叠形态。堆叠的整体高度与正负变化能够同时反映不同类型在结构差值上的优势与短板来源：哪些类型在关键差值维度上更接近优势配置、哪些类型的短板主要来自哪些维度，从而把“协同高低”与“短板来源”对应起来。',
     conclusion:
       '论文将国家划分为结果优势型、资源支撑型、资源短板型、协调脆弱型四类，并指出类型间存在明显结构差异与演化惯性。治理应按类型分层施策，而非统一配置。'
   },
   radar: {
     explain:
-      '该图从多维指标对比中国与全球在风险—资源—结果系统中的相对结构位置，用于识别中国在协同水平与短板维度上的差异。通过雷达各轴的整体形态可判断，中国在资源支撑相关维度的表现相对更突出，而结果改善维度的相对优势相对不足。',
+      '该图从多维指标对比中国与全球在风险—资源—结果系统中的相对结构位置。雷达轮廓的扩展/收缩说明不同维度上资源支撑与结果转化的相对强弱：当某些维度明显“收缩”时，意味着对应的结果改善不足会成为协同提升的瓶颈；反之“扩张”的维度则对应相对优势。',
     conclusion:
       '论文指出中国处于中高协调轨道并归入资源支撑型，但与结果优势型国家相比，结果改善与整体协同仍有提升空间，后续重点在于强化资源转化效率。'
   },
   regionPie: {
     explain:
-      '该图基于 K=4 结构分型结果，按各类型国家数量展示全球样本中的类型规模占比。扇区面积反映全球结构构成的“类型权重”，并提示不同类型在样本中所占比重差异显著；结合悬浮信息可进一步理解每一类型的主导特征与关键结构差值。',
+      '该图基于 K=4 结构分型结果，按各类型国家数量展示全球样本的类型规模占比。占比差异反映不同类型在全球格局中的权重结构：占比更高的类型意味着其特征更普遍；结合悬浮信息可以把类型主导特征与关键结构差值对应起来，从而为类型化治理路径提供数据依据。',
     conclusion:
       '论文显示四类国家在特征空间形成清晰分布且存在连续过渡。结果优势型维持高协调概率更高，协调脆弱型低位锁定更突出，全球治理应采用类型化差异路径。'
   }
@@ -1234,54 +1233,35 @@ function renderZeroCharts() {
 
 async function loadAllData() {
   const healthCandidates = [
-    asset('health_datas.csv'),
-    '/health_datas.csv',
-    './health_datas.csv',
-    '../health_datas.csv',
-    '../../health_datas.csv',
-    `${EXTERNAL_DATA_DIR}/health_datas.csv`
+    asset('data/health_datas.csv'),
+    '/data/health_datas.csv'
   ]
   const lisaCandidates = [
-    asset('lisa_cluster_result_knn5.csv'),
-    '/lisa_cluster_result_knn5.csv',
-    './lisa_cluster_result_knn5.csv',
-    '../lisa_cluster_result_knn5.csv',
-    '../../lisa_cluster_result_knn5.csv',
-    `${EXTERNAL_DATA_DIR}/lisa_cluster_result_knn5.csv`
+    asset('data/lisa_cluster_result_knn5.csv'),
+    '/data/lisa_cluster_result_knn5.csv'
   ]
   const whoGapCandidates = [
-    asset('WHO_Region_Mean_Resource_Demand_Gap_2023.csv'),
-    '/WHO_Region_Mean_Resource_Demand_Gap_2023.csv',
-    './WHO_Region_Mean_Resource_Demand_Gap_2023.csv',
-    '../WHO_Region_Mean_Resource_Demand_Gap_2023.csv',
-    '../../WHO_Region_Mean_Resource_Demand_Gap_2023.csv',
-    `${EXTERNAL_DATA_DIR}/WHO_Region_Mean_Resource_Demand_Gap_2023.csv`
+    asset('data/WHO_Region_Mean_Resource_Demand_Gap_2023.csv'),
+    '/data/WHO_Region_Mean_Resource_Demand_Gap_2023.csv'
   ]
   const trendCandidates = [
-    asset('Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv'),
-    '/Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv',
-    './Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv',
-    '../Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv',
-    '../../Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv',
-    `${EXTERNAL_DATA_DIR}/Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv`
+    asset('data/Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv'),
+    '/data/Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv'
   ]
   const clusterCandidates = [
     asset('data/initial_year_country_clusters_k4.csv'),
     '/data/initial_year_country_clusters_k4.csv',
-    './data/initial_year_country_clusters_k4.csv',
-    `${EXTERNAL_DATA_DIR}/initial_year_country_clusters_k4.csv`
+    './data/initial_year_country_clusters_k4.csv'
   ]
   const clusterSummaryCandidates = [
     asset('data/cluster_summary_k4_initial_year.csv'),
     '/data/cluster_summary_k4_initial_year.csv',
-    './data/cluster_summary_k4_initial_year.csv',
-    `${EXTERNAL_DATA_DIR}/cluster_summary_k4_initial_year.csv`
+    './data/cluster_summary_k4_initial_year.csv'
   ]
   const representativeProfileCandidates = [
     asset('data/representative_country_profiles.csv'),
     '/data/representative_country_profiles.csv',
-    './data/representative_country_profiles.csv',
-    `${EXTERNAL_DATA_DIR}/representative_country_profiles.csv`
+    './data/representative_country_profiles.csv'
   ]
   const [health, lisa, whoGap, trend, clusters, clusterSummary, representativeProfiles] = await Promise.all([
     loadCsvRows(healthCandidates, ['country', 'year', 'U1_Score', 'U2_Score', 'U3_Score', 'D_Value']),
@@ -1306,7 +1286,7 @@ async function loadAllData() {
 async function ensureWorldMap() {
   if (worldMapReady) return
   try {
-    const res = await fetch(asset('world.geo.json'))
+    const res = await fetch(asset('data/world.geo.json'))
     if (res.ok) {
       const geoJson = await res.json()
       echarts.registerMap('world', unifyChinaFeatureNames(geoJson))

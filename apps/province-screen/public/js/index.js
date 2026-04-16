@@ -440,7 +440,7 @@ function qipao(){
         myChart.setOption(buildOption(_parsed, year), true);
     }
 
-    fetch('data/DEA_health_results.csv')
+    fetch('/data/DEA_health_results.csv')
         .then(function(res){
             if(!res.ok) throw new Error('加载失败：'+res.status);
             return res.text();
