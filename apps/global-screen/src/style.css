@@ -98,7 +98,7 @@ body::after {
 
 .screen {
   /* Align right boundary with top-bar content inset */
-  padding: 16px 18px 16px 16px;
+  padding: 16px 1px 16px 10px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -251,6 +251,7 @@ body.screen-enter-play::after {
 }
 
 .panel {
+  position: relative;
   background: rgba(17, 41, 77, 0.56);
   border: 1px solid rgba(0, 240, 255, 0.6);
   border-radius: 8px;
@@ -260,6 +261,124 @@ body.screen-enter-play::after {
 
 .panel:hover {
   box-shadow: 0 0 15px rgba(0, 240, 255, 0.3), 0 0 24px rgba(0, 240, 255, 0.2);
+}
+
+.panel-info-control {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 2147483000;
+}
+
+.panel-info-control--right-shift {
+  right: 24px;
+}
+
+.panel-info-btn {
+  width: 48px;
+  height: 22px;
+  border: 1px solid rgba(168, 232, 255, 0.92);
+  border-radius: 5px;
+  background: linear-gradient(180deg, rgba(103, 191, 250, 0.96), rgba(46, 128, 216, 0.92));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(138, 220, 255, 0.72), inset 0 0 10px rgba(190, 242, 255, 0.35);
+  animation: infoGlowBreath 2.2s ease-in-out infinite;
+}
+
+.panel-info-btn:hover {
+  filter: brightness(1.08);
+}
+
+.panel-info-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 108px;
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 6px;
+  background: rgba(8, 8, 10, 0.95);
+  overflow: hidden;
+  z-index: 2147483200;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.48);
+}
+
+.panel-info-menu button {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.panel-info-menu button + button {
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.panel-info-menu button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.panel-info-popup {
+  width: 300px;
+  max-height: 300px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 34, 52, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.98);
+  color: #1a2a37;
+  z-index: 2147483400;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.2);
+  text-align: center;
+  overflow: auto;
+}
+
+.panel-info-popup h4 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.panel-info-popup p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.72;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.popup-explain h4 {
+  color: #187e3a;
+}
+
+.popup-explain p {
+  color: #1f9a47;
+}
+
+.popup-conclusion h4 {
+  color: #c86b00;
+}
+
+.popup-conclusion p {
+  color: #e07a00;
+}
+
+@keyframes infoGlowBreath {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(138, 220, 255, 0.52), inset 0 0 8px rgba(190, 242, 255, 0.28);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(168, 232, 255, 0.95), inset 0 0 14px rgba(208, 250, 255, 0.46);
+  }
 }
 
 .fade-in {
@@ -306,7 +425,9 @@ body.screen-enter-play::after {
   grid-template-columns: minmax(0, 1fr) minmax(380px, 2fr) minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-  padding: 0 18px;
+  padding: 0 0 0 10px;
+  width: calc(100% + 32px);
+  margin-right: -20px;
   position: relative;
   z-index: 2;
 }
@@ -394,12 +515,17 @@ body.screen-enter-play::after {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
+  width: calc(100% + 32px);
+  margin-right: -20px;
 }
 
 .kpi-grid,
 .dashboard-grid {
-  width: 100%;
   min-width: 0;
+}
+
+.dashboard-grid {
+  width: 100%;
 }
 
 .kpi-card {
@@ -485,8 +611,8 @@ body.screen-enter-play::after {
   justify-self: stretch;
   align-self: stretch;
   min-width: 0;
-  /* 仅收整列右缘，使三个蓝色模块外框与上方 KPI 区域右边界对齐（不改动图表配置） */
-  padding-right: 28px;
+  /* 撤销右列额外右侧补偿 */
+  padding-right: 0;
   box-sizing: border-box;
 }
 

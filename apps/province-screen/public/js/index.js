@@ -1212,27 +1212,6 @@ function huaxing(){
 function zhexian() {
 	var myChart = echarts.init(document.getElementById('zhexian'));
 
-    function extractYear(cell) {
-        if (cell == null) return '';
-        if (typeof cell === 'number') {
-            if (cell >= 1900 && cell <= 2200) return String(Math.round(cell));
-            if (window.XLSX && window.XLSX.SSF && cell > 20000 && cell < 90000) {
-                var d = window.XLSX.SSF.parse_date_code(cell);
-                if (d && d.y) return String(d.y);
-            }
-        }
-        var s = String(cell).trim();
-        var m = s.match(/(19|20)\d{2}/);
-        return m ? m[0] : '';
-    }
-
-    function findCol(header, re) {
-        for (var i = 0; i < header.length; i++) {
-            if (re.test(String(header[i] || '').trim())) return i;
-        }
-        return -1;
-    }
-
     function mean(arr) {
         var a = arr.filter(function (x) { return isFinite(x); });
         if (!a.length) return null;
@@ -1241,77 +1220,74 @@ function zhexian() {
         return s / a.length;
     }
 
-    /** 四列：省份年份、儿童管理率、老年健康覆盖指数、区域 —— 按「区域+年份」聚合成各区域均值 */
-    function parseTwoXlsx(buffer) {
-        if (!window.XLSX) throw new Error('XLSX 未加载');
-        var wb = window.XLSX.read(buffer, { type: 'array' });
-        var sheetName = wb.SheetNames && wb.SheetNames.length ? wb.SheetNames[0] : null;
-        if (!sheetName) return null;
-        var sheet = wb.Sheets[sheetName];
-        var rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
-        if (!rows || rows.length < 2) return null;
+    function parsePanelTobitCsv(text) {
+        var raw = String(text || '').replace(/^\uFEFF/, '').trim();
+        if (!raw) return null;
+        var lines = raw.split(/\r?\n/).filter(function (l) { return String(l).trim().length > 0; });
+        if (lines.length < 2) return null;
 
-        var header = (rows[0] || []).map(function (x) { return String(x || '').trim(); });
-        var hasHeader = header.some(function (h) { return /省|年|儿童|老年|区域/i.test(h); });
-        var start = hasHeader ? 1 : 0;
-
-        var colPy = findCol(header, /省份年份|省.*年|省份.*年/i);
-        var colYearOnly = findCol(header, /^年份$|年度|year/i);
-        var colChild = findCol(header, /儿童管理率|儿童/i);
-        var colElder = findCol(header, /老年健康覆盖|老年.*覆盖|覆盖指数/i);
-        var colRegion = findCol(header, /^区域$|区域/);
-
-        if (colPy < 0) colPy = 0;
-        if (colChild < 0) colChild = 1;
-        if (colElder < 0) colElder = 2;
-        if (colRegion < 0) colRegion = 3;
-
-        var agg = {};
-        for (var r = start; r < rows.length; r++) {
-            var row = rows[r] || [];
-            var region = String(row[colRegion] || '').trim();
-            var year = colYearOnly >= 0 ? extractYear(row[colYearOnly]) : extractYear(row[colPy]);
-            var c = Number(row[colChild]);
-            var e = Number(row[colElder]);
-            if (!region || !year) continue;
-            var key = region + '\t' + year;
-            if (!agg[key]) agg[key] = { region: region, year: year, child: [], elder: [] };
-            if (isFinite(c)) agg[key].child.push(c);
-            if (isFinite(e)) agg[key].elder.push(e);
+        function splitLine(line) {
+            return String(line).split(',').map(function (s) { return String(s).trim(); });
         }
 
-        var keys = Object.keys(agg);
-        if (!keys.length) return null;
+        var header = splitLine(lines[0]);
+        function idx(name) {
+            var i = header.indexOf(name);
+            return i;
+        }
 
-        var yearSet = {};
-        var regionSet = {};
-        keys.forEach(function (k) {
-            var o = agg[k];
-            yearSet[o.year] = true;
-            regionSet[o.region] = true;
-        });
-        var years = Object.keys(yearSet).sort(function (a, b) { return Number(a) - Number(b); });
-        var regions = Object.keys(regionSet).sort();
+        var colYear = idx('年份');
+        var colBed = idx('每千人床位数');
+        var colDoc = idx('每千人医师数');
+        var colNurse = idx('每千人护士数');
+        var colChild = idx('3岁以下儿童系统管理率%');
+        var colLife = idx('人口平均预期寿命（岁）');
 
-        function buildSeriesField(field) {
-            var out = {};
-            regions.forEach(function (reg) {
-                out[reg] = years.map(function (y) {
-                    var k = reg + '\t' + y;
-                    var o = agg[k];
-                    if (!o) return null;
-                    var m = mean(o[field]);
-                    return m != null ? Number(m.toFixed(4)) : null;
-                });
+        if (colYear < 0 || colBed < 0 || colDoc < 0 || colNurse < 0 || colChild < 0 || colLife < 0) {
+            return null;
+        }
+
+        var needCols = Math.max(colYear, colBed, colDoc, colNurse, colChild, colLife) + 1;
+
+        var agg = {};
+        for (var r = 1; r < lines.length; r++) {
+            var cols = splitLine(lines[r]);
+            if (cols.length < needCols) continue;
+            var y = Number(cols[colYear]);
+            if (!isFinite(y)) continue;
+            var key = String(y);
+            if (!agg[key]) {
+                agg[key] = { bed: [], doc: [], nurse: [], child: [], life: [] };
+            }
+            var b = parseFloat(cols[colBed]);
+            var d = parseFloat(cols[colDoc]);
+            var n = parseFloat(cols[colNurse]);
+            var c = parseFloat(cols[colChild]);
+            var l = parseFloat(cols[colLife]);
+            if (isFinite(b)) agg[key].bed.push(b);
+            if (isFinite(d)) agg[key].doc.push(d);
+            if (isFinite(n)) agg[key].nurse.push(n);
+            if (isFinite(c)) agg[key].child.push(c);
+            if (isFinite(l)) agg[key].life.push(l);
+        }
+
+        var years = Object.keys(agg).sort(function (a, b) { return Number(a) - Number(b); });
+        if (!years.length) return null;
+
+        function seriesFor(field) {
+            return years.map(function (yk) {
+                var m = mean(agg[yk][field]);
+                return m != null ? Number(m.toFixed(4)) : null;
             });
-            return out;
         }
 
         return {
             years: years,
-            regions: regions,
-            childByRegion: buildSeriesField('child'),
-            elderByRegion: buildSeriesField('elder')
+            bed: seriesFor('bed'),
+            doc: seriesFor('doc'),
+            nurse: seriesFor('nurse'),
+            child: seriesFor('child'),
+            life: seriesFor('life')
         };
     }
 
@@ -1321,55 +1297,94 @@ function zhexian() {
 
     var palette = ['#f0c725', '#16f892', '#0BE3FF', '#eb5757', '#9b59b6', '#3498db', '#e67e22', '#1abc9c'];
 
-    fetch(encodeURI('data/two.xlsx'))
+    var legendNames = ['千人床位', '千人医师', '千人护士', '儿童管理率', '预期寿命'];
+
+    fetch(encodeURI('data/panel_data_tobit.csv'))
         .then(function (res) {
             if (!res.ok) throw new Error('加载失败：' + res.status);
-            return res.arrayBuffer();
+            return res.text();
         })
-        .then(function (buf) {
-            var parsed = parseTwoXlsx(buf);
-            if (!parsed || !parsed.years.length || !parsed.regions.length) return renderEmpty();
+        .then(function (text) {
+            var parsed = parsePanelTobitCsv(text);
+            if (!parsed || !parsed.years.length) return renderEmpty();
 
-            var series = [];
-            parsed.regions.forEach(function (reg, idx) {
-                var color = palette[idx % palette.length];
-                series.push({
-                    name: reg,
+            var c0 = palette[0];
+            var c1 = palette[1];
+            var c2 = palette[2];
+            var c3 = palette[3];
+            var c4 = palette[4];
+
+            var series = [
+                {
+                    name: legendNames[0],
                     type: 'line',
                     smooth: true,
                     symbolSize: 6,
                     xAxisIndex: 0,
                     yAxisIndex: 0,
-                    data: parsed.childByRegion[reg],
-                    itemStyle: { normal: { color: color } },
+                    data: parsed.bed,
+                    itemStyle: { normal: { color: c0 } },
                     lineStyle: { normal: { width: 2 } }
-                });
-                series.push({
-                    name: reg,
+                },
+                {
+                    name: legendNames[1],
+                    type: 'line',
+                    smooth: true,
+                    symbolSize: 6,
+                    xAxisIndex: 0,
+                    yAxisIndex: 0,
+                    data: parsed.doc,
+                    itemStyle: { normal: { color: c1 } },
+                    lineStyle: { normal: { width: 2 } }
+                },
+                {
+                    name: legendNames[2],
+                    type: 'line',
+                    smooth: true,
+                    symbolSize: 6,
+                    xAxisIndex: 0,
+                    yAxisIndex: 0,
+                    data: parsed.nurse,
+                    itemStyle: { normal: { color: c2 } },
+                    lineStyle: { normal: { width: 2 } }
+                },
+                {
+                    name: legendNames[3],
                     type: 'line',
                     smooth: true,
                     symbolSize: 6,
                     xAxisIndex: 1,
                     yAxisIndex: 1,
-                    data: parsed.elderByRegion[reg],
-                    itemStyle: { normal: { color: color } },
+                    data: parsed.child,
+                    itemStyle: { normal: { color: c3 } },
                     lineStyle: { normal: { width: 2 } }
-                });
-            });
+                },
+                {
+                    name: legendNames[4],
+                    type: 'line',
+                    smooth: true,
+                    symbolSize: 6,
+                    xAxisIndex: 1,
+                    yAxisIndex: 1,
+                    data: parsed.life,
+                    itemStyle: { normal: { color: c4 } },
+                    lineStyle: { normal: { width: 2 } }
+                }
+            ];
 
             myChart.setOption({
                 color: palette,
                 title: [
                     {
-                        text: '儿童管理率（区域均值）',
-			left: 'center',
+                        text: '1. 千人床位 / 千人医师 / 千人护士',
+                        left: 'center',
                         top: '0.5%',
                         textStyle: { color: '#cfe8ff', fontSize: 12 }
                     },
                     {
-                        text: '老年健康覆盖指数（区域均值）',
+                        text: '2. 儿童管理率 / 预期寿命',
                         left: 'center',
-                        top: '47.5%',
+                        top: '50%',
                         textStyle: { color: '#cfe8ff', fontSize: 12 }
                     }
                 ],
@@ -1382,17 +1397,21 @@ function zhexian() {
                     top: '7.5%',
                     left: 'center',
                     textStyle: { color: '#c1cadf', fontSize: 11 },
-                    data: parsed.regions
+                    data: legendNames
                 },
-                /* 双格上下拉开，避免老年图标题/轴与儿童图 X 轴年份重叠 */
+                /* 双格上下拉开：略缩上图底、下移下图顶，留出中间空隙；下图抬高底边避免「年份」贴边溢出 */
                 grid: [
-                    { left: '10%', right: '6%', top: '15%', bottom: '58%' },
-                    { left: '10%', right: '6%', top: '54%', bottom: '9%' }
+                    { left: '10%', right: '6%', top: '15%', bottom: '61%' },
+                    { left: '10%', right: '6%', top: '57%', bottom: '14%' }
                 ],
                 xAxis: [
                     {
                         type: 'category',
                         boundaryGap: false,
+                        name: '年份',
+                        nameLocation: 'middle',
+                        nameGap: 28,
+                        nameTextStyle: { color: '#c1cadf', fontSize: 11 },
                         data: parsed.years,
                         gridIndex: 0,
                         axisLine: { lineStyle: { color: 'rgba(240,199,37,0.45)' } },
@@ -1401,6 +1420,10 @@ function zhexian() {
                     {
 			type: 'category',
 			boundaryGap: false,
+                        name: '年份',
+                        nameLocation: 'middle',
+                        nameGap: 28,
+                        nameTextStyle: { color: '#c1cadf', fontSize: 11 },
                         data: parsed.years,
                         gridIndex: 1,
                         axisLine: { lineStyle: { color: 'rgba(240,199,37,0.45)' } },
@@ -1410,9 +1433,8 @@ function zhexian() {
                 yAxis: [
                     {
 			type: 'value',
-                        name: '儿童管理率',
+                        name: '指标值',
                         gridIndex: 0,
-                        min: 80,
                         nameTextStyle: { color: '#c1cadf', fontSize: 11 },
                         axisLine: { lineStyle: { color: 'rgba(240,199,37,0.45)' } },
                         axisLabel: { color: '#c1cadf', fontSize: 11 },
@@ -1420,11 +1442,21 @@ function zhexian() {
                     },
                     {
                         type: 'value',
-                        name: '老年健康覆盖指数',
+                        name: '指标值',
                         gridIndex: 1,
+                        min: 70,
+                        max: 100,
+                        interval: 5,
                         nameTextStyle: { color: '#c1cadf', fontSize: 11 },
                         axisLine: { lineStyle: { color: 'rgba(240,199,37,0.45)' } },
-                        axisLabel: { color: '#c1cadf', fontSize: 11 },
+                        axisLabel: {
+                            color: '#c1cadf',
+                            fontSize: 11,
+                            formatter: function (value) {
+                                if (value === 70) return '';
+                                return value;
+                            }
+                        },
                         splitLine: { lineStyle: { color: 'rgba(17,56,101,0.45)' } }
                     }
                 ],
@@ -1432,7 +1464,7 @@ function zhexian() {
             }, true);
         })
         .catch(function (e) {
-            console && console.warn && console.warn('two.xlsx 加载失败', e);
+            console && console.warn && console.warn('panel_data_tobit.csv 加载失败', e);
             renderEmpty();
         });
 

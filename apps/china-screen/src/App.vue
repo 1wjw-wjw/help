@@ -43,7 +43,19 @@ const state = reactive({
   year: 2024,
   play: true,
   cards: { aging: 0, expense: 0, life: 0, distance: 0 },
-  raw: { aging: [], center: [], u3: [], resident: [], medical: [] }
+  raw: {
+    aging: [],
+    center: [],
+    u3: [],
+    resident: [],
+    medical: [],
+    warning: [],
+    mismatch: [],
+    bootstrap: [],
+    thresholdScan: [],
+    robustScan: [],
+    thresholdDiag: []
+  }
 });
 
 /** 各图表容器 DOM 引用：map 中心地图，l1–l3 左列，r1–r3 右列，sankey 底部 */
@@ -63,6 +75,149 @@ const charts = {};
 let playTimer = null;
 let resizeTimer = null;
 let onResize = null;
+let cardsRefreshTimer = null;
+let isRefreshingCards = false;
+const CARD_ANIM_MS = 3000;
+const CARD_REFRESH_MS = 15000;
+
+const moduleText = {
+  l1: {
+    explain: '该图用于识别“高压力低保障”与“高压力高保障”等结构差异。每个点代表一个省份在某一年“压力—保障”的相对位置。横向越高表示老龄化压力越大，纵向越高表示资源保障越强。点越偏离对角均衡区，说明供需适配偏差越明显。',
+    conclusion: '中国资源问题不只是“总量不足”，更是“结构性错配”。老龄化压力上升后，部分省份进入失配加速阶段。重点风险并非均匀分布，呈现明显省域梯度差异。评估重点应从“有多少资源”转向“资源是否匹配需求”。'
+  },
+  l2: {
+    explain: '该图展示单门槛搜索与稳健性检验的结果变化，用于判断老龄化压力是否存在“阶段分界”。两条曲线分别对应单门槛搜索与稳健性检验结果，峰值附近对应最优门槛区间。两条曲线趋势高度接近，说明门槛识别结果具有稳定性与可靠性。',
+    conclusion: '最优单门槛值约为 0.149814（65 岁及以上人口占比）。门槛检验结果高度显著（F=74.567739，bootstrap p<0.01）。95% 置信区间为 [0.077647, 0.164765]，结果稳健可靠。省份一旦跨门槛，错配由“缓慢累积”转向“加速增强”阶段。'
+  },
+  l3: {
+    explain: '该图从压力、保障、错配三个维度展示 2012—2024 年全国结构变化趋势。不单纯看总量规模，而是重点呈现三者之间的相对结构与演化关系。若错配层持续扩大，说明资源调整速度显著落后于老龄化需求变化。',
+    conclusion: '老龄化压力重心移动速度明显快于资源保障重心调整速度。“需求先动、供给滞后”是医疗资源错配持续累积的核心原因。全国错配水平整体呈上升趋势，且区域间上升速度存在显著差异。东北地区错配程度抬升最为明显。'
+  },
+  map: {
+    explain: '该图以颜色深浅表示各省绝对错配程度，颜色越深代表错配问题越突出。用于直观展示全国错配的空间分布、集聚特征与区域差异。可结合时间轴观察错配格局演化路径，比较不同年份空间格局变化。',
+    conclusion: '2024 年中国省域资源错配呈现显著空间分异与局部集聚特征。高压力—低保障与高压力—高保障类型并存，治理需分类施策。省域治理思路应从“统一加量”转向“分型施策、结构纠偏”。'
+  },
+  r1: {
+    explain: '该图以双轴曲线展示老龄化压力与资源保障的长期动态变化趋势。一条曲线反映需求压力变化，另一条反映资源供给能力变化。两条曲线间距越大，表示供需不匹配与失衡风险越高。',
+    conclusion: '老龄化压力持续上升是驱动医疗资源错配的核心背景。资源保障具备风险缓冲作用，但对需求变化存在明显响应滞后。单纯依靠资源总量扩张无法自动消解结构性错配问题。'
+  },
+  r2: {
+    explain: '该图展示当年绝对错配程度最高的 TOP10 省份，用于锁定重点干预对象。排名越靠前，表示错配问题越突出，短期风险干预优先级越高。可与地图联动，实现“风险强度 + 空间位置”一体化展示。',
+    conclusion: '2024 年辽宁省已进入极高风险区间。上海、江苏、天津处于高风险区间。重庆、吉林、黑龙江、四川、山东等省份已接近高风险边缘。风险治理必须采用“分层预警、梯度响应、定向倾斜”策略。'
+  },
+  r3: {
+    explain: '该图以雷达形式对比典型省份在多维度指标上的结构特征差异。面积大小不代表绝对优劣，形状差异直接反映短板来源与结构问题。用于识别“相同风险等级下，短板结构为何不同”的内在原因。',
+    conclusion: '省份之间短板来源差异显著，无法用统一方案解决所有问题。部分省份短板在基层承载能力，部分在城乡卫生人力配置差距。精准化、差异化治理效果显著优于平均化、一刀切投入。'
+  },
+  sankey: {
+    explain: '该图展示从门槛分组到风险等级的流向关系，反映风险演化路径。流量线条越粗，表示沿该路径转化的省份样本数量越多。用于识别高风险群体主要来自哪类门槛分组，便于分组干预。',
+    conclusion: '随着 65 岁及以上人口占比从低组升至高组，错配指数持续大幅上升。错配指数从 Q1 到 Q4 呈清晰递增（-0.1807 → 0.6116）。预警体系应采用“门槛判定 + 错配水平”双维度联合识别。'
+  },
+  rank: {
+    explain: '该图滚动展示年度错配最突出的 Top10 省份及差距幅度。用于大屏动态展示与答辩快速定位重点关注对象。与静态榜单形成互补，兼顾瞬时格局与持续监测需求。',
+    conclusion: '风险治理重心应前移至高风险与边缘高风险省份。低风险省份应提前布局前瞻储备，避免跨门槛后被动应对。高风险与极高风险省份必须实施定向资源倾斜与结构性调整。'
+  }
+};
+const openMenuKey = ref('');
+const hoverInfo = reactive({ key: '', type: '' });
+const modulePanelEls = {};
+const popupPosition = reactive({ left: 0, top: 0, width: 340, maxHeight: 300 });
+let hoverTimer = null;
+
+const toggleModuleMenu = (key) => {
+  openMenuKey.value = openMenuKey.value === key ? '' : key;
+  if (!openMenuKey.value) {
+    hoverInfo.key = '';
+    hoverInfo.type = '';
+  }
+};
+const openHoverInfo = (key, type) => {
+  if (hoverTimer) clearTimeout(hoverTimer);
+  hoverInfo.key = key;
+  hoverInfo.type = type;
+  nextTick(() => {
+    updatePopupPosition(key);
+  });
+};
+const closeHoverInfoSoon = () => {
+  if (hoverTimer) clearTimeout(hoverTimer);
+  hoverTimer = setTimeout(() => {
+    hoverInfo.key = '';
+    hoverInfo.type = '';
+  }, 120);
+};
+const keepHoverInfo = () => {
+  if (hoverTimer) clearTimeout(hoverTimer);
+};
+const closeMenuOnOutsideClick = (evt) => {
+  const target = evt?.target;
+  if (!(target instanceof Element)) return;
+  if (target.closest('.panel-info-control')) return;
+  openMenuKey.value = '';
+  hoverInfo.key = '';
+  hoverInfo.type = '';
+};
+const popupVisible = (key) => !!key && hoverInfo.key === key && openMenuKey.value === key;
+const setModulePanelEl = (key, el) => {
+  if (el) modulePanelEls[key] = el;
+};
+const updatePopupPosition = (key) => {
+  const panelEl = modulePanelEls[key];
+  if (!panelEl) return;
+  const rect = panelEl.getBoundingClientRect();
+  const width = 340;
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+
+  let left = rect.right + 14;
+  let top = rect.top + 40;
+
+  if (key === 'map') {
+    left = rect.right + 16;
+    top = rect.top + 50;
+  } else if (['r1', 'r2', 'r3'].includes(key)) {
+    left = rect.left - width - 24;
+    top = rect.top + 40;
+  } else if (['sankey', 'rank'].includes(key)) {
+    left = rect.right - width - 8;
+    top = rect.top - 196;
+  }
+
+  const margin = 8;
+  const maxHeight = Math.min(300, viewportH - margin * 2);
+  left = Math.max(margin, Math.min(left, viewportW - width - margin));
+  top = Math.max(margin, Math.min(top, viewportH - maxHeight - margin));
+
+  popupPosition.left = Math.round(left);
+  popupPosition.top = Math.round(top);
+  popupPosition.width = width;
+  popupPosition.maxHeight = Math.round(maxHeight);
+};
+const popupStyle = computed(() => ({
+  position: 'fixed',
+  left: `${popupPosition.left}px`,
+  top: `${popupPosition.top}px`,
+  width: `${popupPosition.width}px`,
+  maxHeight: `${popupPosition.maxHeight}px`
+}));
+const syncPopupPosition = () => {
+  if (!hoverInfo.key || openMenuKey.value !== hoverInfo.key) return;
+  updatePopupPosition(hoverInfo.key);
+};
+const panelLayerStyle = (key) => ((openMenuKey.value === key || hoverInfo.key === key) ? { zIndex: 5200 } : { zIndex: 1 });
+const leftOverlayActive = computed(() => ['l1', 'l2', 'l3'].includes(hoverInfo.key) && openMenuKey.value === hoverInfo.key);
+const rightOverlayActive = computed(() => ['r1', 'r2', 'r3'].includes(hoverInfo.key) && openMenuKey.value === hoverInfo.key);
+const popupTitle = computed(() => (hoverInfo.type === 'conclusion' ? '研究结论' : '图表说明'));
+const popupToneClass = computed(() => (hoverInfo.type === 'conclusion' ? 'popup-conclusion' : 'popup-explain'));
+const popupText = computed(() => {
+  if (!hoverInfo.key || !moduleText[hoverInfo.key]) return '';
+  return hoverInfo.type === 'conclusion' ? moduleText[hoverInfo.key].conclusion : moduleText[hoverInfo.key].explain;
+});
+watch(() => [hoverInfo.key, openMenuKey.value], () => {
+  nextTick(() => {
+    syncPopupPosition();
+  });
+}, { flush: 'post' });
 
 const GLOBAL_DEV_PORT = 5172;
 const PROVINCES_DEV_PORT = 5174;
@@ -148,8 +303,32 @@ const centerMap = computed(() => {
   return m;
 });
 
-/** 固定十省按当前 state.year 老龄化率排序后的 Top10 */
+/** 关键预警省份 Top10（2024），缺失时回退到老龄化 Top10 */
 const top10 = computed(() => {
+  const mismatchByYear = state.raw.mismatch
+    .filter((r) => num(r['年份']) === state.year)
+    .map((r) => ({
+      province: pName(r['省份']),
+      value: num(r['绝对错配指数']),
+      diff: num(r['方向性错配指数'])
+    }))
+    .filter((r) => r.province)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10);
+  if (mismatchByYear.length) return mismatchByYear;
+
+  const warningRows = state.raw.warning
+    .filter((r) => num(r['年份']) === 2024 || !('年份' in r))
+    .map((r) => ({
+      province: pName(r['省份']),
+      value: num(r['绝对错配指数']),
+      diff: num(r['方向性错配指数'])
+    }))
+    .filter((r) => r.province)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10);
+  if (warningRows.length) return warningRows;
+
   return FIXED_TOP10_PROVINCES
     .map((p) => {
       const now = agingMap.value.get(`${p}-${state.year}`) ?? 0;
@@ -160,20 +339,38 @@ const top10 = computed(() => {
     .slice(0, 10);
 });
 /** 底部滚动排行无缝循环：两份 Top10 拼接 */
-const rankingLoop = computed(() => [...top10.value, ...top10.value]);
+const rankingLoop = computed(() => {
+  const base = top10.value;
+  return [...base, ...base];
+});
+
+const rankingLoopDisplay = computed(() => {
+  const base = top10.value;
+  if (!base.length) return [];
+  const maxVal = Math.max(...base.map((r) => r.value), 0);
+  const minVal = Math.min(...base.map((r) => r.value), maxVal);
+  const span = Math.max(1e-6, maxVal - minVal);
+  const withPct = base.map((r) => {
+    const t = (r.value - minVal) / span;
+    // Keep bars readable while preserving rank gap.
+    const pct = 28 + t * 68;
+    return { ...r, barPct: Math.min(96, Math.max(22, pct)) };
+  });
+  return [...withPct, ...withPct];
+});
 
 /** 顶部四卡固定展示 2024 年，数据均来自 CSV 聚合 */
 const CARD_YEAR = 2024;
 
-/** 第四卡：population_center_shift.csv — 优先重心距离；为 0 时用同表总权重；仍为 0 时用双重心纬度差 */
+/** 第四卡：关键预警省份数量 */
 const card4Metric = computed(() => {
-  const row = centerMap.value.get(CARD_YEAR);
-  const dist = num(row?.['重心距离_km']);
-  if (dist > 0) return { value: dist, decimals: 2, labelRest: '医疗重心与老龄重心距离（km）' };
-  const w = num(row?.['总权重_医疗']);
-  if (w > 0) return { value: w, decimals: 4, labelRest: '医疗资源重心权重合计' };
-  const latDiff = Math.abs(num(row?.['重心纬度_医疗']) - num(row?.['重心纬度_老龄']));
-  return { value: latDiff, decimals: 4, labelRest: '双重心纬度差（°）' };
+  const highRisk = state.raw.warning.filter((r) => String(r['风险等级'] || '').includes('高风险'));
+  const keyWarning = state.raw.warning.filter((r) => {
+    const lv = String(r['风险等级'] || '');
+    return lv.includes('高风险') || lv.includes('极高风险');
+  });
+  const count = keyWarning.length || highRisk.length || state.raw.warning.length;
+  return { value: count, decimals: 0, labelRest: '关键预警省份数量（个）' };
 });
 
 /** 顶部四卡目标值（全国均值等，供 growCards 缓动） */
@@ -187,6 +384,66 @@ const cardTarget = computed(() => {
   const life = rsRows.reduce((s, r) => s + num(r['总体健康水平_人口平均预期寿命（岁）']), 0) / (rsRows.length || 1);
   return { aging, expense, life, distance: card4Metric.value.value };
 });
+
+const haversineKm = (lon1, lat1, lon2, lat2) => {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+};
+
+const buildAgingWideRows = (rows) => {
+  const byProv = new Map();
+  rows.forEach((r) => {
+    const province = pName(r['省份']);
+    const year = num(r['年份']);
+    if (!province || !year) return;
+    if (!byProv.has(province)) byProv.set(province, { 地区: province });
+    byProv.get(province)[`${year}年`] = num(r['65岁及以上人口占比']) * 100;
+  });
+  return [...byProv.values()];
+};
+
+const buildCenterRows = (rows) => {
+  return YEARS.map((year) => {
+    const yearRows = rows.filter((r) => num(r['年份']) === year);
+    let medW = 0;
+    let ageW = 0;
+    let medLon = 0;
+    let medLat = 0;
+    let ageLon = 0;
+    let ageLat = 0;
+    yearRows.forEach((r) => {
+      const province = pName(r['省份']);
+      const coord = provinceCoord[province];
+      if (!coord) return;
+      const med = Math.max(0, num(r['卫生人员数/万人']) || num(r['医疗卫生机构床位数/张']));
+      const age = Math.max(0, num(r['65岁及以上人口占比']));
+      medW += med;
+      ageW += age;
+      medLon += coord[0] * med;
+      medLat += coord[1] * med;
+      ageLon += coord[0] * age;
+      ageLat += coord[1] * age;
+    });
+    const medCenterLon = medW ? medLon / medW : 105;
+    const medCenterLat = medW ? medLat / medW : 35;
+    const ageCenterLon = ageW ? ageLon / ageW : 105;
+    const ageCenterLat = ageW ? ageLat / ageW : 35;
+    return {
+      年份: year,
+      重心经度_医疗: medCenterLon,
+      重心纬度_医疗: medCenterLat,
+      重心经度_老龄: ageCenterLon,
+      重心纬度_老龄: ageCenterLat,
+      重心距离_km: haversineKm(medCenterLon, medCenterLat, ageCenterLon, ageCenterLat),
+      总权重_医疗: medW,
+      总权重_老龄: ageW
+    };
+  });
+};
 
 /** 老龄化率分档（与地图 choropleth、左上散点图例一致）；最高档 max 放宽以覆盖 >21.9% 的省份 */
 const AGING_RATE_VISUAL_PIECES = [
@@ -220,14 +477,22 @@ const provinceCoord = {
 
 const fmt = (v, f = 2) => Number(v || 0).toFixed(f);
 /** 顶部 KPI 数字缓动到 cardTarget */
-const growCards = () => {
+const growCards = (durationMs = CARD_ANIM_MS, fromZero = false) => {
   const t0 = performance.now();
-  const d = 7000;
-  const start = { ...state.cards };
+  const d = durationMs;
+  const start = fromZero
+    ? { aging: 0, expense: 0, life: 0, distance: 0 }
+    : { ...state.cards };
+  if (fromZero) {
+    state.cards.aging = 0;
+    state.cards.expense = 0;
+    state.cards.life = 0;
+    state.cards.distance = 0;
+  }
   const target = cardTarget.value;
   const step = (ts) => {
     const p = Math.min(1, (ts - t0) / d);
-    const e = 1 - (1 - p) ** 3;
+    const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
     state.cards.aging = start.aging + (target.aging - start.aging) * e;
     state.cards.expense = start.expense + (target.expense - start.expense) * e;
     state.cards.life = start.life + (target.life - start.life) * e;
@@ -361,7 +626,9 @@ const drawAll = () => {
 
   // 左上：老龄化率 × 人均卫生费用散点（气泡大小与人口权重相关）
   charts.l1.setOption({
-    animationDurationUpdate: 7000,
+    animationDuration: 900,
+    animationDurationUpdate: 900,
+    animationEasingUpdate: 'cubicOut',
     grid: { ...gridSmall, left: 118 },
     visualMap: {
       type: 'piecewise',
@@ -379,7 +646,15 @@ const drawAll = () => {
     },
     xAxis: { type: 'value', name: '老龄化率(%)', axisLabel: { color: '#bee9ff' } },
     yAxis: { type: 'value', name: '人均卫生费用(元)', axisLabel: { color: '#bee9ff' } },
-    tooltip: { formatter: (p) => `${p.value[3]}<br/>老龄化率:${fmt(p.value[0])}%<br/>人均卫生费用:${fmt(p.value[1], 0)}元` },
+    tooltip: {
+      trigger: 'item',
+      confine: true,
+      backgroundColor: 'rgba(8, 18, 42, 0.94)',
+      borderColor: 'rgba(46, 200, 207, 0.45)',
+      borderWidth: 1,
+      textStyle: { color: '#e8f4ff', fontSize: 12 },
+      formatter: (p) => `${p.value[3]}<br/>压力指数:${fmt(p.value[0])}<br/>保障指标:${fmt(p.value[1], 0)}`
+    },
     series: [{
       type: 'scatter',
       data: provinces.map((p) => {
@@ -388,83 +663,108 @@ const drawAll = () => {
         const pop = num(centerMap.value.get(y)?.['总权重_老龄']) * a / 100;
         return [a, num(u['财力投入_人均卫生费用/元']), pop, p];
       }),
-      symbolSize: (v) => Math.max(8, Math.sqrt(v[2]) * 2),
+      symbolSize: (v) => Math.max(14, Math.sqrt(v[2]) * 3.2),
       itemStyle: { borderColor: 'rgba(89, 210, 255, 0.5)', borderWidth: 1 },
-      emphasis: { scale: 1.2 }
+      emphasis: { scale: 1.35 }
     }]
   }, optMerge);
 
   // 左中：医疗 / 老龄双重心经纬轨迹；坐标轴范围按数据加 padding，避免轨迹缩成一点
-  const trajMed = YEARS.map((yr) => {
-    const r = centerMap.value.get(yr);
-    return [num(r?.['重心经度_医疗']), num(r?.['重心纬度_医疗'])];
-  });
-  const trajOld = YEARS.map((yr) => {
-    const r = centerMap.value.get(yr);
-    return [num(r?.['重心经度_老龄']), num(r?.['重心纬度_老龄'])];
-  });
-  const allPts = [...trajMed, ...trajOld].filter((p) => p[0] > 1 && p[1] > 1);
-  let minLng = 105;
-  let maxLng = 120;
-  let minLat = 18;
-  let maxLat = 45;
-  if (allPts.length) {
-    const lngs = allPts.map((p) => p[0]);
-    const lats = allPts.map((p) => p[1]);
-    minLng = Math.min(...lngs);
-    maxLng = Math.max(...lngs);
-    minLat = Math.min(...lats);
-    maxLat = Math.max(...lats);
-    const padLng = Math.max((maxLng - minLng) * 0.15, 0.25);
-    const padLat = Math.max((maxLat - minLat) * 0.15, 0.12);
-    minLng -= padLng;
-    maxLng += padLng;
-    minLat -= padLat;
-    maxLat += padLat;
-  }
+  const thresholdRows = state.raw.thresholdScan
+    .map((r) => ({ t: num(r['threshold']), r2: num(r['adj_r2']) }))
+    .filter((r) => Number.isFinite(r.t) && Number.isFinite(r.r2))
+    .sort((a, b) => a.t - b.t);
+  const robustRows = state.raw.robustScan
+    .map((r) => ({ t: num(r['threshold']), r2: num(r['adj_r2']) }))
+    .filter((r) => Number.isFinite(r.t) && Number.isFinite(r.r2))
+    .sort((a, b) => a.t - b.t);
+  const thresholdStep = Math.max(1, Math.floor(thresholdRows.length / 10) || 1);
+  const robustStep = Math.max(1, Math.floor(robustRows.length / 10) || 1);
   charts.l2.setOption({
-    animationDurationUpdate: 7000,
+    animationDuration: 1800,
+    animationDurationUpdate: 1800,
+    animationEasing: 'cubicOut',
+    animationEasingUpdate: 'cubicOut',
     legend: { top: 4, textStyle: { color: '#d7f2ff' } },
     grid: gridSmall,
-    dataset: [{ source: trajMed }, { source: trajOld }],
+    tooltip: {
+      trigger: 'axis',
+      confine: true,
+      axisPointer: {
+        type: 'line',
+        lineStyle: { color: 'rgba(120, 220, 255, 0.65)', width: 1.2 }
+      },
+      backgroundColor: 'rgba(8, 18, 42, 0.94)',
+      borderColor: 'rgba(46, 200, 207, 0.45)',
+      borderWidth: 1,
+      textStyle: { color: '#e8f4ff', fontSize: 12 },
+      formatter: (params) => {
+        const p0 = params?.[0];
+        const p1 = params?.[1];
+        const threshold = p0?.value?.[0] ?? p1?.value?.[0] ?? '-';
+        const r2a = p0?.value?.[1];
+        const r2b = p1?.value?.[1];
+        const aText = Number.isFinite(r2a) ? Number(r2a).toFixed(4) : '-';
+        const bText = Number.isFinite(r2b) ? Number(r2b).toFixed(4) : '-';
+        return `门槛值: ${threshold}<br/>单门槛搜索: ${aText}<br/>稳健性搜索: ${bText}`;
+      }
+    },
     xAxis: {
       type: 'value',
-      name: '经度(°)',
-      min: minLng,
-      max: maxLng,
+      name: '门槛值',
       scale: true,
       axisLabel: { color: '#c5ecff' }
     },
     yAxis: {
       type: 'value',
-      name: '纬度(°)',
-      min: minLat,
-      max: maxLat,
+      name: '拟合优度(adj R²)',
       scale: true,
       axisLabel: { color: '#c5ecff' }
     },
     series: [
       {
-        name: '医疗资源重心',
+        name: '单门槛搜索',
         type: 'line',
-        datasetIndex: 0,
-        encode: { x: 0, y: 1 },
+        data: thresholdRows.map((r) => [r.t, r.r2]),
+        smooth: 0.18,
         showSymbol: true,
+        showAllSymbol: true,
         symbol: 'circle',
-        lineStyle: { color: '#39b5ff', width: 2.5 },
+        sampling: 'none',
+        lineStyle: { color: '#39b5ff', width: 2.4 },
         itemStyle: { color: '#39b5ff' },
-        symbolSize: 7
+        symbolSize: (_val, params) => (params.dataIndex % thresholdStep === 0 ? 7 : 0),
+        emphasis: {
+          focus: 'none',
+          lineStyle: { width: 3 },
+          itemStyle: { borderColor: '#ffffff', borderWidth: 1, shadowBlur: 10, shadowColor: 'rgba(57,181,255,0.55)' }
+        },
+        blur: {
+          lineStyle: { opacity: 1 },
+          itemStyle: { opacity: 1 }
+        }
       },
       {
-        name: '老龄化重心',
+        name: '稳健性搜索',
         type: 'line',
-        datasetIndex: 1,
-        encode: { x: 0, y: 1 },
+        data: robustRows.map((r) => [r.t, r.r2]),
+        smooth: 0.18,
         showSymbol: true,
+        showAllSymbol: true,
         symbol: 'circle',
-        lineStyle: { color: '#ff9f33', width: 2.5 },
+        sampling: 'none',
+        lineStyle: { color: '#ff9f33', width: 2.4 },
         itemStyle: { color: '#ff9f33' },
-        symbolSize: 7
+        symbolSize: (_val, params) => (params.dataIndex % robustStep === 0 ? 7 : 0),
+        emphasis: {
+          focus: 'none',
+          lineStyle: { width: 3 },
+          itemStyle: { borderColor: '#ffffff', borderWidth: 1, shadowBlur: 10, shadowColor: 'rgba(255,159,51,0.55)' }
+        },
+        blur: {
+          lineStyle: { opacity: 1 },
+          itemStyle: { opacity: 1 }
+        }
       }
     ]
   }, optMerge);
@@ -479,14 +779,26 @@ const drawAll = () => {
       c: rows.reduce((s, r) => s + num(r['财力投入_医疗卫生机构事业收入/亿元']), 0)
     };
   });
+  const maxA = Math.max(...stack.map((v) => v.a), 0);
+  const maxB = Math.max(...stack.map((v) => v.b), 0);
+  const maxC = Math.max(...stack.map((v) => v.c), 0);
+  const scaleSeries = (val, max) => (max > 0 ? (val / max) * 100 : 0);
   charts.l3.setOption({
-    animationDurationUpdate: 7000, legend: { top: 4, textStyle: { color: '#d7f2ff' } }, grid: gridSmall,
+    animationDurationUpdate: 3200, legend: { top: 4, textStyle: { color: '#d7f2ff' } }, grid: gridSmall,
     xAxis: { type: 'category', data: YEARS, axisLabel: { color: '#bfe8ff' } },
-    yAxis: { type: 'value', axisLabel: { color: '#bfe8ff' } },
+    yAxis: { type: 'value', axisLabel: { color: '#bfe8ff' }, name: '标准化指数' },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params) => {
+        const idx = params?.[0]?.dataIndex ?? 0;
+        const raw = stack[idx] || { a: 0, b: 0, c: 0, year: YEARS[idx] };
+        return `${raw.year}<br/>物力资源: ${raw.a.toFixed(2)}<br/>人才资源: ${raw.b.toFixed(2)}<br/>财力投入: ${raw.c.toFixed(2)}`;
+      }
+    },
     series: [
-      { name: '物力资源', type: 'bar', stack: 't', data: stack.map((v) => v.a), itemStyle: { color: '#6ad7ff' } },
-      { name: '人才资源', type: 'bar', stack: 't', data: stack.map((v) => v.b), itemStyle: { color: '#8c79ff' } },
-      { name: '财力投入', type: 'bar', stack: 't', data: stack.map((v) => v.c), itemStyle: { color: '#ff9f33' } }
+      { name: '物力资源', type: 'bar', stack: 't', data: stack.map((v) => scaleSeries(v.a, maxA)), itemStyle: { color: '#6ad7ff' } },
+      { name: '人才资源', type: 'bar', stack: 't', data: stack.map((v) => scaleSeries(v.b, maxB)), itemStyle: { color: '#8c79ff' } },
+      { name: '财力投入', type: 'bar', stack: 't', data: stack.map((v) => scaleSeries(v.c, maxC)), itemStyle: { color: '#ff9f33' } }
     ]
   }, optMerge);
 
@@ -501,25 +813,102 @@ const drawAll = () => {
   });
   charts.r1.setOption({
     animationDurationUpdate: 7000, legend: { top: 2, textStyle: { color: '#d7f2ff' } }, grid: { ...gridSmall, left: 36, right: 40 },
+    tooltip: {
+      trigger: 'axis',
+      confine: true,
+      axisPointer: { type: 'line', lineStyle: { color: 'rgba(120, 220, 255, 0.65)', width: 1.2 } },
+      backgroundColor: 'rgba(8, 18, 42, 0.94)',
+      borderColor: 'rgba(46, 200, 207, 0.45)',
+      borderWidth: 1,
+      textStyle: { color: '#e8f4ff', fontSize: 12 }
+    },
     xAxis: { type: 'category', data: YEARS, axisLabel: { color: '#bfe8ff', fontSize: 10 } },
     yAxis: [
       { type: 'value', alignTicks: false, axisLabel: { color: '#ffbc72', fontSize: 10 } },
       { type: 'value', alignTicks: false, axisLabel: { color: '#77ceff', fontSize: 10 } }
     ],
     series: [
-      { type: 'line', name: '需求水平', smooth: true, data: demand, lineStyle: { color: '#ff9f33', width: 2.5 }, areaStyle: { color: 'rgba(255,159,51,0.15)' } },
-      { type: 'line', name: '供给水平', smooth: true, yAxisIndex: 1, data: supply, lineStyle: { color: '#46bcff', width: 2.5 }, areaStyle: { color: 'rgba(70,188,255,0.15)' } }
+      {
+        type: 'line',
+        name: '需求水平',
+        smooth: true,
+        showSymbol: true,
+        symbol: 'circle',
+        symbolSize: 5,
+        data: demand,
+        lineStyle: { color: '#ff9f33', width: 2.5 },
+        itemStyle: { color: '#ff9f33' },
+        areaStyle: { color: 'rgba(255,159,51,0.15)' },
+        emphasis: {
+          focus: 'none',
+          lineStyle: { width: 3 },
+          itemStyle: { borderColor: '#ffffff', borderWidth: 1, shadowBlur: 10, shadowColor: 'rgba(255,159,51,0.55)' }
+        }
+      },
+      {
+        type: 'line',
+        name: '供给水平',
+        smooth: true,
+        showSymbol: true,
+        symbol: 'circle',
+        symbolSize: 5,
+        yAxisIndex: 1,
+        data: supply,
+        lineStyle: { color: '#46bcff', width: 2.5 },
+        itemStyle: { color: '#46bcff' },
+        areaStyle: { color: 'rgba(70,188,255,0.15)' },
+        emphasis: {
+          focus: 'none',
+          lineStyle: { width: 3 },
+          itemStyle: { borderColor: '#ffffff', borderWidth: 1, shadowBlur: 10, shadowColor: 'rgba(70,188,255,0.55)' }
+        }
+      }
     ]
   }, optMerge);
 
   // 右中：当前年老龄化率 Top10 横向条形图
   charts.r2.setOption({
-    animationDurationUpdate: 7000, grid: { left: 52, right: 46, top: 24, bottom: 24, containLabel: true },
+    animationDuration: 900,
+    animationDurationUpdate: 900,
+    animationEasingUpdate: 'quarticOut',
+    grid: { left: 52, right: 52, top: 24, bottom: 24, containLabel: true },
+    tooltip: {
+      trigger: 'item',
+      confine: true,
+      backgroundColor: 'rgba(8, 18, 42, 0.94)',
+      borderColor: 'rgba(46, 200, 207, 0.45)',
+      borderWidth: 1,
+      textStyle: { color: '#e8f4ff', fontSize: 12 },
+      formatter: (p) => {
+        const name = p?.name ?? '';
+        const value = Number(p?.value ?? 0).toFixed(3);
+        return `${name}<br/>绝对错配指数: ${value}`;
+      }
+    },
     xAxis: { type: 'value', axisLabel: { color: '#bfe8ff', fontSize: 10 } },
     yAxis: { type: 'category', data: top10.value.map((d) => d.province), axisLabel: { color: '#d8f4ff', fontSize: 11 } },
     series: [{
-      type: 'bar', data: top10.value.map((d) => d.value), label: { show: true, position: 'right', color: '#fff', fontSize: 10 },
-      itemStyle: { color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [{ offset: 0, color: '#2f8cff' }, { offset: 1, color: '#67deff' }]) }
+      type: 'bar',
+      barWidth: 12,
+      barCategoryGap: '42%',
+      data: top10.value.map((d) => Number(d.value.toFixed(3))),
+      label: {
+        show: true,
+        position: 'right',
+        color: '#fff',
+        fontSize: 10,
+        formatter: ({ value }) => Number(value).toFixed(3)
+      },
+      itemStyle: { color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [{ offset: 0, color: '#2f8cff' }, { offset: 1, color: '#67deff' }]) },
+      emphasis: {
+        focus: 'none',
+        itemStyle: {
+          borderColor: '#ffffff',
+          borderWidth: 1,
+          shadowBlur: 12,
+          shadowColor: 'rgba(80, 200, 255, 0.55)'
+        }
+      }
     }]
   }, optMerge);
 
@@ -682,18 +1071,47 @@ const startPlay = () => {
 
 /** 并行加载各 CSV 到 state.raw */
 const loadData = async () => {
-  const [a, c, u, r, m] = await Promise.all([
-    axios.get(asset('data/province_aging_rate.csv')),
-    axios.get(asset('data/population_center_shift.csv')),
-    axios.get(asset('data/u3_health_resource_allocation.csv')),
-    axios.get(asset('data/resident_health_indicators.csv')),
-    axios.get(asset('data/medical_health_indicators.csv'))
+  const [main, risk, mismatch, bootstrap, robust, threshold, diag] = await Promise.all([
+    axios.get(asset('data/v2/6_aging_resource_data.csv')),
+    axios.get(asset('data/v2/4_risk_warning_classification_table_2024.csv')),
+    axios.get(asset('data/v2/5_aging_resource_mismatch_analysis_table.csv')),
+    axios.get(asset('data/v2/1_single_threshold_bootstrap_test_results.csv')),
+    axios.get(asset('data/v2/7_robustness_single_threshold_search_table_absolute_mismatch.csv')),
+    axios.get(asset('data/v2/12_threshold_search_results_table_single_threshold.csv')),
+    axios.get(asset('data/v2/11_threshold_group_diagnosis_table.csv'))
   ]);
-  state.raw.aging = parseCSV(a.data);
-  state.raw.center = parseCSV(c.data);
-  state.raw.u3 = parseCSV(u.data);
-  state.raw.resident = parseCSV(r.data);
-  state.raw.medical = parseCSV(m.data);
+  const mainRows = parseCSV(main.data);
+  state.raw.aging = buildAgingWideRows(mainRows);
+  state.raw.center = buildCenterRows(mainRows);
+  state.raw.u3 = mainRows.map((r) => ({
+    '卫生资源配置_省份': pName(r['省份']),
+    '卫生资源配置_年份': num(r['年份']),
+    '财力投入_人均卫生费用/元': num(r['人均卫生费用/元']),
+    '人才资源_卫生人员数/万人': num(r['卫生人员数/万人']),
+    '人才资源_执业医师数/人': num(r['执业医师数/人']),
+    '人才资源_注册护士数/人': num(r['注册护士数/人']),
+    '物力资源_医疗卫生机构床位数/张': num(r['医疗卫生机构床位数/张']),
+    '财力投入_医疗卫生机构事业收入/亿元': num(r['医疗卫生机构事业收入/亿元']),
+    '服务能力_诊疗人次数/万人次': num(r['诊疗人次数/万人次'])
+  }));
+  state.raw.resident = mainRows.map((r) => ({
+    '居民健康水平_省份': pName(r['省份']),
+    '居民健康水平_年份': num(r['年份']),
+    '总体健康水平_人口死亡率': num(r['人口死亡率‰']),
+    '总体健康水平_人口平均预期寿命（岁）': num(r['人口平均预期寿命（岁）'])
+  }));
+  state.raw.medical = mainRows.map((r) => ({
+    '医疗卫生水平_省份': pName(r['省份']),
+    '医疗卫生水平_年份': num(r['年份']),
+    '医疗设施_基层医疗卫生机构数/个': num(r['基层医疗卫生机构数/个']),
+    '医疗设施_三甲医院数/个': num(r['专业公共卫生机构/个'])
+  }));
+  state.raw.warning = parseCSV(risk.data);
+  state.raw.mismatch = parseCSV(mismatch.data);
+  state.raw.bootstrap = parseCSV(bootstrap.data);
+  state.raw.robustScan = parseCSV(robust.data);
+  state.raw.thresholdScan = parseCSV(threshold.data);
+  state.raw.thresholdDiag = parseCSV(diag.data);
 };
 
 watch(() => state.year, () => {
@@ -702,6 +1120,9 @@ watch(() => state.year, () => {
 
 // 数据就绪后初始化图表、首帧绘制、轮播与 resize 监听
 onMounted(async () => {
+  document.addEventListener('click', closeMenuOnOutsideClick);
+  window.addEventListener('resize', syncPopupPosition);
+  window.addEventListener('scroll', syncPopupPosition, true);
   updateScale();
   await loadData();
   await nextTick();
@@ -713,13 +1134,30 @@ onMounted(async () => {
     attachResize();
     state.ready = true;
   });
+
+  // Keep top KPI cards refreshed every 7 seconds.
+  cardsRefreshTimer = setInterval(async () => {
+    if (isRefreshingCards) return;
+    isRefreshingCards = true;
+    try {
+      await loadData();
+      growCards(CARD_ANIM_MS, true);
+    } finally {
+      isRefreshingCards = false;
+    }
+  }, CARD_REFRESH_MS);
 });
 
 onBeforeUnmount(() => {
+  document.removeEventListener('click', closeMenuOnOutsideClick);
+  window.removeEventListener('resize', syncPopupPosition);
+  window.removeEventListener('scroll', syncPopupPosition, true);
+  if (hoverTimer) clearTimeout(hoverTimer);
   // 取消动画帧、轮播、resize，销毁全部 ECharts 实例
   if (drawAllRaf) cancelAnimationFrame(drawAllRaf);
   drawAllRaf = 0;
   clearInterval(playTimer);
+  clearInterval(cardsRefreshTimer);
   if (onResize) window.removeEventListener('resize', onResize);
   Object.values(charts).forEach((c) => c && c.dispose());
 });
@@ -753,7 +1191,7 @@ onBeforeUnmount(() => {
               <div class="ring-core">
                 <div class="lab">
                   <span class="lab-year">{{ CARD_YEAR }}年</span>
-                  <span class="lab-desc">全国老龄化率（%）</span>
+                  <span class="lab-desc">全国老龄化压力指数</span>
                 </div>
                 <div class="num">{{ fmt(state.cards.aging) }}</div>
               </div>
@@ -764,7 +1202,7 @@ onBeforeUnmount(() => {
               <div class="ring-core">
                 <div class="lab">
                   <span class="lab-year">{{ CARD_YEAR }}年</span>
-                  <span class="lab-desc">全国人均卫生费用（元）</span>
+                  <span class="lab-desc">全国资源保障指数</span>
                 </div>
                 <div class="num">{{ fmt(state.cards.expense, 0) }}</div>
               </div>
@@ -791,7 +1229,7 @@ onBeforeUnmount(() => {
                   <line x1="40" y1="18" x2="860" y2="18" stroke="url(#pedStroke)" stroke-width="0.6" stroke-opacity="0.45" />
                 </svg>
               </div>
-              <h1>中国老龄化背景下医疗资源错配可视化大屏</h1>
+              <h1>中国老龄化医疗资源错配与风险预警大屏</h1>
             </div>
           </div>
           <div class="top-metrics top-metrics-right">
@@ -801,7 +1239,7 @@ onBeforeUnmount(() => {
               <div class="ring-core">
                 <div class="lab">
                   <span class="lab-year">{{ CARD_YEAR }}年</span>
-                  <span class="lab-desc">全国平均预期寿命（岁）</span>
+                  <span class="lab-desc">门槛检验显著性指标</span>
                 </div>
                 <div class="num">{{ fmt(state.cards.life) }}</div>
               </div>
@@ -822,15 +1260,60 @@ onBeforeUnmount(() => {
 
         <!-- 主体：左三图 | 中地图 | 右三图 -->
         <section class="body">
-          <aside class="left">
-            <div class="panel"><div class="panel-title">老龄化率 vs 医疗资源投入  ·  散点(气泡)图</div><div :ref="panels.l1" class="chart"></div></div>
-            <div class="panel"><div class="panel-title">双重心空间轨迹对比  ·  折线图</div><div :ref="panels.l2" class="chart"></div></div>
-            <div class="panel"><div class="panel-title">2012-2024医疗资源结构变化  ·  堆叠柱状图</div><div :ref="panels.l3" class="chart"></div></div>
+          <aside class="left" :style="{ zIndex: leftOverlayActive ? 6200 : 1 }">
+            <div class="panel" :style="panelLayerStyle('l1')" :ref="(el) => setModulePanelEl('l1', el)">
+              <div class="panel-title">
+                压力指数 vs 保障指数 · 错配气泡散点图
+                <div class="panel-info-control" @mouseleave="closeHoverInfoSoon">
+                  <button class="panel-info-btn" @click.stop="toggleModuleMenu('l1')">信息</button>
+                  <div v-show="openMenuKey === 'l1'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                    <button @mouseenter="openHoverInfo('l1', 'explain')">图表说明</button>
+                    <button @mouseenter="openHoverInfo('l1', 'conclusion')">研究结论</button>
+                  </div>
+                </div>
+              </div>
+              <div :ref="panels.l1" class="chart"></div>
+            </div>
+            <div class="panel" :style="panelLayerStyle('l2')" :ref="(el) => setModulePanelEl('l2', el)">
+              <div class="panel-title">
+                门槛搜索与稳健性轨迹  ·  折线图
+                <div class="panel-info-control" @mouseleave="closeHoverInfoSoon">
+                  <button class="panel-info-btn" @click.stop="toggleModuleMenu('l2')">信息</button>
+                  <div v-show="openMenuKey === 'l2'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                    <button @mouseenter="openHoverInfo('l2', 'explain')">图表说明</button>
+                    <button @mouseenter="openHoverInfo('l2', 'conclusion')">研究结论</button>
+                  </div>
+                </div>
+              </div>
+              <div :ref="panels.l2" class="chart"></div>
+            </div>
+            <div class="panel" :style="panelLayerStyle('l3')" :ref="(el) => setModulePanelEl('l3', el)">
+              <div class="panel-title">
+                压力-保障-错配结构变化  ·  堆叠柱状图
+                <div class="panel-info-control" @mouseleave="closeHoverInfoSoon">
+                  <button class="panel-info-btn" @click.stop="toggleModuleMenu('l3')">信息</button>
+                  <div v-show="openMenuKey === 'l3'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                    <button @mouseenter="openHoverInfo('l3', 'explain')">图表说明</button>
+                    <button @mouseenter="openHoverInfo('l3', 'conclusion')">研究结论</button>
+                  </div>
+                </div>
+              </div>
+              <div :ref="panels.l3" class="chart"></div>
+            </div>
           </aside>
           <main class="center">
             <!-- 地图：ECharts 容器 + 底部光圈/光束装饰 + 年份轴 -->
-            <div class="map-panel panel">
-              <div class="panel-title">全国各省老龄化率分布  ·  分级设色地图</div>
+            <div class="map-panel panel" :style="panelLayerStyle('map')" :ref="(el) => setModulePanelEl('map', el)">
+              <div class="panel-title">
+                省域绝对错配热力分布  ·  分级设色地图
+                <div class="panel-info-control" @mouseleave="closeHoverInfoSoon">
+                  <button class="panel-info-btn" @click.stop="toggleModuleMenu('map')">信息</button>
+                  <div v-show="openMenuKey === 'map'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                    <button @mouseenter="openHoverInfo('map', 'explain')">图表说明</button>
+                    <button @mouseenter="openHoverInfo('map', 'conclusion')">研究结论</button>
+                  </div>
+                </div>
+              </div>
               <div class="map-body">
                 <div :ref="panels.map" class="map-chart"></div>
                 <div class="halo-wrap" aria-hidden="true">
@@ -844,17 +1327,62 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </main>
-          <aside class="right">
-            <div class="panel rsmall"><div class="panel-title">医疗需求 vs 医疗供给  ·  双Y轴曲线图</div><div :ref="panels.r1" class="chart small"></div></div>
-            <div class="panel rsmall"><div class="panel-title">2024老龄化率Top10  ·  条形图</div><div :ref="panels.r2" class="chart small"></div></div>
-            <div class="panel rsmall"><div class="panel-title">Top5省份资源配置雷达  ·  雷达图</div><div :ref="panels.r3" class="chart small"></div></div>
+          <aside class="right" :style="{ zIndex: rightOverlayActive ? 6200 : 1 }">
+            <div class="panel rsmall" :style="panelLayerStyle('r1')" :ref="(el) => setModulePanelEl('r1', el)">
+              <div class="panel-title">
+                压力与保障双轴趋势  ·  曲线图
+                <div class="panel-info-control panel-info-control--right-shift" @mouseleave="closeHoverInfoSoon">
+                  <button class="panel-info-btn" @click.stop="toggleModuleMenu('r1')">信息</button>
+                  <div v-show="openMenuKey === 'r1'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                    <button @mouseenter="openHoverInfo('r1', 'explain')">图表说明</button>
+                    <button @mouseenter="openHoverInfo('r1', 'conclusion')">研究结论</button>
+                  </div>
+                </div>
+              </div>
+              <div :ref="panels.r1" class="chart small"></div>
+            </div>
+            <div class="panel rsmall" :style="panelLayerStyle('r2')" :ref="(el) => setModulePanelEl('r2', el)">
+              <div class="panel-title">
+                关键预警省份TOP10  ·  条形图
+                <div class="panel-info-control panel-info-control--right-shift" @mouseleave="closeHoverInfoSoon">
+                  <button class="panel-info-btn" @click.stop="toggleModuleMenu('r2')">信息</button>
+                  <div v-show="openMenuKey === 'r2'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                    <button @mouseenter="openHoverInfo('r2', 'explain')">图表说明</button>
+                    <button @mouseenter="openHoverInfo('r2', 'conclusion')">研究结论</button>
+                  </div>
+                </div>
+              </div>
+              <div :ref="panels.r2" class="chart small"></div>
+            </div>
+            <div class="panel rsmall" :style="panelLayerStyle('r3')" :ref="(el) => setModulePanelEl('r3', el)">
+              <div class="panel-title">
+                典型省份错配画像  ·  雷达图
+                <div class="panel-info-control panel-info-control--right-shift" @mouseleave="closeHoverInfoSoon">
+                  <button class="panel-info-btn" @click.stop="toggleModuleMenu('r3')">信息</button>
+                  <div v-show="openMenuKey === 'r3'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                    <button @mouseenter="openHoverInfo('r3', 'explain')">图表说明</button>
+                    <button @mouseenter="openHoverInfo('r3', 'conclusion')">研究结论</button>
+                  </div>
+                </div>
+              </div>
+              <div :ref="panels.r3" class="chart small"></div>
+            </div>
           </aside>
         </section>
 
         <!-- 底栏：桑基图 + 滚动排行 -->
         <section class="bottom">
-          <div class="panel sankey-panel">
-            <div class="panel-title">老龄化程度 → 医疗资源投入 → 健康服务产出  ·  桑基图</div>
+          <div class="panel sankey-panel" :style="panelLayerStyle('sankey')" :ref="(el) => setModulePanelEl('sankey', el)">
+            <div class="panel-title">
+              门槛分组 → 风险等级诊断流向  ·  桑基图
+              <div class="panel-info-control" @mouseleave="closeHoverInfoSoon">
+                <button class="panel-info-btn" @click.stop="toggleModuleMenu('sankey')">信息</button>
+                <div v-show="openMenuKey === 'sankey'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                  <button @mouseenter="openHoverInfo('sankey', 'explain')">图表说明</button>
+                  <button @mouseenter="openHoverInfo('sankey', 'conclusion')">研究结论</button>
+                </div>
+              </div>
+            </div>
             <div class="sankey-wrap">
               <aside class="sankey-legend sankey-legend-left" aria-label="图例左侧">
                 <div v-for="name in SANKEY_LEGEND_LEFT_KEYS" :key="name" class="leg-row">
@@ -871,21 +1399,42 @@ onBeforeUnmount(() => {
               </aside>
             </div>
           </div>
-          <div class="panel rank-panel">
-            <div class="panel-title">2024老龄化率Top10滚动排行  ·  表格排行</div>
+          <div class="panel rank-panel" :style="panelLayerStyle('rank')" :ref="(el) => setModulePanelEl('rank', el)">
+            <div class="panel-title">
+              2024省域绝对错配Top10滚动排行
+              <div class="panel-info-control" @mouseleave="closeHoverInfoSoon">
+                <button class="panel-info-btn" @click.stop="toggleModuleMenu('rank')">信息</button>
+                <div v-show="openMenuKey === 'rank'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                  <button @mouseenter="openHoverInfo('rank', 'explain')">图表说明</button>
+                  <button @mouseenter="openHoverInfo('rank', 'conclusion')">研究结论</button>
+                </div>
+              </div>
+            </div>
             <div class="rank-list">
               <div class="rank-track">
-                <div class="row" v-for="(r, i) in rankingLoop" :key="`${r.province}-${i}`">
+                <div class="row" v-for="(r, i) in rankingLoopDisplay" :key="`${r.province}-${i}`">
                   <span :class="['idx', { top3: i % 10 < 3 }]">{{ (i % 10) + 1 }}</span>
                   <span class="pn">{{ r.province }}</span>
-                  <span class="pv">{{ fmt(r.value) }}%</span>
-                  <span class="df">{{ r.diff >= 0 ? '+' : '' }}{{ fmt(r.diff) }}</span>
-                  <div class="bar"><i :style="{ width: `${Math.min(100, r.value * 4)}%` }"></i></div>
+                  <span class="pv">{{ fmt(r.value, 3) }}</span>
+                  <span class="df">{{ r.diff >= 0 ? '+' : '' }}{{ fmt(r.diff, 3) }}</span>
+                  <div class="bar"><i :style="{ width: `${r.barPct}%` }"></i></div>
                 </div>
               </div>
             </div>
           </div>
         </section>
+        <Teleport to="body">
+          <div
+            v-show="popupVisible(hoverInfo.key)"
+            :class="['panel-info-popup', popupToneClass]"
+            :style="popupStyle"
+            @mouseenter="keepHoverInfo"
+            @mouseleave="closeHoverInfoSoon"
+          >
+            <h4>{{ popupTitle }}</h4>
+            <p>{{ popupText }}</p>
+          </div>
+        </Teleport>
       </div>
     </div>
   </div>
@@ -1125,23 +1674,23 @@ onBeforeUnmount(() => {
   color: #c5e9ff;
 }
 .metric-ring .lab-year {
-  font-size: 8px;
+  font-size: 9px;
   line-height: 1.15;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.04em;
 }
 .metric-ring .lab-desc {
-  font-size: 8px;
+  font-size: 9px;
   line-height: 1.18;
-  font-weight: 500;
+  font-weight: 600;
   text-align: center;
   max-width: 100%;
   overflow-wrap: anywhere;
   word-break: normal;
 }
 .metric-ring .num {
-  font-size: 16px;
-  font-weight: 800;
+  font-size: 17px;
+  font-weight: 900;
   color: #fff;
   line-height: 1.1;
   text-shadow: 0 0 8px rgba(120, 220, 255, 0.5);
@@ -1165,13 +1714,139 @@ onBeforeUnmount(() => {
 
 /* ========== 左/中/右三列与通用 panel ========== */
 .body { height: 75%; display: grid; grid-template-columns: 26% 48% 26%; gap: 12px; padding: 0 16px 10px; position: relative; z-index: 2; }
-.left, .right { display: grid; grid-template-rows: repeat(3, 1fr); gap: 12px; }
+.left, .right { position: relative; display: grid; grid-template-rows: repeat(3, 1fr); gap: 12px; }
 .left { transform: perspective(1500px) rotateY(8deg); transform-origin: right center; }
 .right { transform: perspective(1500px) rotateY(-8deg); transform-origin: left center; }
 .center { min-width: 0; }
 /* 略透明，使底层星场能透出；不改变布局与边框 */
-.panel { display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(10,39,82,.52), rgba(3,18,44,.58)); border: 1px solid rgba(84,196,255,.5); box-shadow: 0 0 12px rgba(64,172,255,.45), inset 0 0 22px rgba(81,142,255,.18); border-radius: 8px; overflow: hidden; min-height: 0; }
-.panel-title { flex-shrink: 0; min-height: 28px; line-height: 1.25; padding: 5px 10px; font-size: 11px; color: #def5ff; background: linear-gradient(90deg, rgba(33,131,198,.38), transparent); word-break: break-word; }
+.panel { position: relative; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(10,39,82,.52), rgba(3,18,44,.58)); border: 1px solid rgba(84,196,255,.5); box-shadow: 0 0 12px rgba(64,172,255,.45), inset 0 0 22px rgba(81,142,255,.18); border-radius: 8px; overflow: visible; min-height: 0; }
+.panel-title { position: relative; flex-shrink: 0; min-height: 30px; line-height: 1.28; padding: 6px 70px 6px 10px; font-size: 12px; font-weight: 700; color: #def5ff; background: linear-gradient(90deg, rgba(33,131,198,.38), transparent); word-break: break-word; }
+.panel-info-control {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2147483000;
+}
+.panel-info-control--right-shift {
+  right: 28px;
+}
+.panel-info-btn {
+  width: 48px;
+  height: 22px;
+  border: 1px solid rgba(168, 232, 255, 0.92);
+  border-radius: 5px;
+  background: linear-gradient(180deg, rgba(103, 191, 250, 0.96), rgba(46, 128, 216, 0.92));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(138, 220, 255, 0.72), inset 0 0 10px rgba(190, 242, 255, 0.35);
+  animation: infoGlowBreath 2.2s ease-in-out infinite;
+}
+.panel-info-btn:hover {
+  filter: brightness(1.08);
+}
+.panel-info-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 108px;
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 6px;
+  background: rgba(8, 8, 10, 0.95);
+  overflow: hidden;
+  z-index: 2147483200;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.48);
+}
+.panel-info-menu button {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.panel-info-menu button + button {
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+}
+.panel-info-menu button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.panel-info-popup {
+  position: absolute;
+  width: 320px;
+  min-height: 168px;
+  max-height: 300px;
+  padding: 14px 18px;
+  border: 1px solid rgba(15, 34, 52, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.98);
+  color: #1a2a37;
+  z-index: 2147483400;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.2);
+  text-align: center;
+  overflow: auto;
+}
+.panel-info-popup h4 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.panel-info-popup p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.72;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.popup-explain h4 {
+  color: #187e3a;
+}
+.popup-explain p {
+  color: #1f9a47;
+}
+.popup-conclusion h4 {
+  color: #c86b00;
+}
+.popup-conclusion p {
+  color: #e07a00;
+}
+.popup-right {
+  top: 36px;
+  left: calc(100% + 10px);
+  transform: perspective(1500px) rotateY(-8deg);
+  transform-origin: left center;
+}
+.popup-left {
+  top: 36px;
+  right: calc(100% + 360px);
+  transform: perspective(1500px) rotateY(8deg);
+  transform-origin: right center;
+}
+.popup-center {
+  top: 36px;
+  left: calc(100% + 12px);
+  transform: none;
+}
+.popup-top {
+  bottom: calc(100% + 10px);
+  right: 10px;
+  transform: none;
+}
+@keyframes infoGlowBreath {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(138, 220, 255, 0.52), inset 0 0 8px rgba(190, 242, 255, 0.28);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(168, 232, 255, 0.95), inset 0 0 14px rgba(208, 250, 255, 0.46);
+  }
+}
 .chart { flex: 1; min-height: 0; }
 .rsmall .small { flex: 1; min-height: 0; }
 

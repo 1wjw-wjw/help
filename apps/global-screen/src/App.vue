@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import * as echarts from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import {
@@ -194,6 +194,64 @@ const healthRows = ref([])
 const lisaRows = ref([])
 const whoGapRows = ref([])
 const trendRows = ref([])
+const clusterRows = ref([])
+const clusterSummaryRows = ref([])
+const representativeProfileRows = ref([])
+const moduleText = {
+  whoGap: {
+    explain:
+      '该图用于比较 WHO 六大区域在 2023 年资源需求缺口的平均水平。柱体正负反映缺口方向，绝对值反映区域层面的结构压力强弱，适合识别区域优先治理顺序。',
+    conclusion:
+      '论文显示全球协同水平虽在提升，但区域分异长期存在。资源端约束在多数国家普遍可见，区域层面同样体现明显不均衡，需按区域差异开展针对性补短板。'
+  },
+  trend: {
+    explain:
+      '该图展示 2000—2023 年全球需求水平、资源水平与资源缺口的动态演化。重点用于观察长期趋势与阶段拐点，而非单一国家横向比较。',
+    conclusion:
+      '论文结果表明全球三系统协调度总体上升，但后期增幅趋缓。资源投入与健康结果改善并非线性同步，资源转化效率与结构适配仍是关键约束。'
+  },
+  riskDonut: {
+    explain:
+      '该图展示主要健康风险因素在样本国家中的相对占比结构，用于识别风险构成中权重更高的因素，为风险治理优先级提供依据。',
+    conclusion:
+      '论文指出风险暴露会显著传导至健康损失，且在资源不足情景下影响更强。风险治理应从“总量控制”转向“结构干预”，按风险类型实施差异化策略。'
+  },
+  worldHeat: {
+    explain:
+      '该图按年份展示全球三系统耦合协调度 D 值的空间分布，颜色越高代表协同水平越高。结合时间轴可观察国家间相对位置变化与格局演进。',
+    conclusion:
+      '论文显示高值区主要在欧洲、北美和大洋洲，低值区更多位于撒哈拉以南非洲及南亚部分地区。全球平均 D 值总体提升，但空间分层特征仍持续存在。'
+  },
+  lisa: {
+    explain:
+      '该图用于识别 2023 年 D 值在局部空间上的集聚关系。高值集聚与低值集聚可反映区域联动与空间外溢特征，强调的是空间关联而非单点水平。',
+    conclusion:
+      '论文中 Moran’s I 检验结果显著，说明全球协同差异存在稳定空间依赖。欧洲高值集聚明显、撒哈拉以南非洲低值集聚突出，中国周边高值联动仍有提升空间。'
+  },
+  stack: {
+    explain:
+      '该图按四种国家结构类型选取代表国家，展示 D 值与三类结构差值指标的堆叠画像。用于比较不同类型国家的内部短板结构与特征差异。',
+    conclusion:
+      '论文将国家划分为结果优势型、资源支撑型、资源短板型、协调脆弱型四类，并指出类型间存在明显结构差异与演化惯性。治理应按类型分层施策，而非统一配置。'
+  },
+  radar: {
+    explain:
+      '该图从多维指标对比中国与全球在风险—资源—结果系统中的相对结构位置，用于识别中国在协同水平与短板维度上的相对差异。',
+    conclusion:
+      '论文指出中国处于中高协调轨道并归入资源支撑型，但与结果优势型国家相比，结果改善与整体协同仍有提升空间，后续重点在于强化资源转化效率。'
+  },
+  regionPie: {
+    explain:
+      '该图基于 K=4 结构分型结果，按各类型国家数量展示全球样本中的类型规模占比。悬浮信息补充该类型主导特征与关键结构差值，用于把握全球结构构成。',
+    conclusion:
+      '论文显示四类国家在特征空间形成清晰分布且存在连续过渡。结果优势型维持高协调概率更高，协调脆弱型低位锁定更突出，全球治理应采用类型化差异路径。'
+  }
+}
+const openMenuKey = ref('')
+const hoverInfo = reactive({ key: '', type: '' })
+const modulePanelEls = {}
+const popupPosition = reactive({ left: 0, top: 0, width: 300, maxHeight: 300 })
+let hoverTimer = null
 const stageStyle = computed(() => {
   const scale = Math.min(viewportWidth.value / DESIGN_WIDTH, viewportHeight.value / DESIGN_HEIGHT)
   const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1
@@ -203,6 +261,116 @@ const stageStyle = computed(() => {
     transform: `scale(${safeScale})`
   }
 })
+
+const toggleModuleMenu = (key) => {
+  openMenuKey.value = openMenuKey.value === key ? '' : key
+  if (!openMenuKey.value) {
+    hoverInfo.key = ''
+    hoverInfo.type = ''
+  }
+}
+
+const openHoverInfo = (key, type) => {
+  if (hoverTimer) clearTimeout(hoverTimer)
+  hoverInfo.key = key
+  hoverInfo.type = type
+  nextTick(() => {
+    updatePopupPosition(key)
+  })
+}
+
+const closeHoverInfoSoon = () => {
+  if (hoverTimer) clearTimeout(hoverTimer)
+  hoverTimer = setTimeout(() => {
+    hoverInfo.key = ''
+    hoverInfo.type = ''
+  }, 120)
+}
+
+const keepHoverInfo = () => {
+  if (hoverTimer) clearTimeout(hoverTimer)
+}
+
+const closeMenuOnOutsideClick = (evt) => {
+  const target = evt?.target
+  if (!(target instanceof Element)) return
+  if (target.closest('.panel-info-control') || target.closest('.panel-info-popup')) return
+  openMenuKey.value = ''
+  hoverInfo.key = ''
+  hoverInfo.type = ''
+}
+
+const popupVisible = (key) => !!key && hoverInfo.key === key && openMenuKey.value === key
+
+const setModulePanelEl = (key, el) => {
+  if (el) modulePanelEls[key] = el
+}
+
+const updatePopupPosition = (key) => {
+  const panelEl = modulePanelEls[key]
+  if (!panelEl) return
+  const rect = panelEl.getBoundingClientRect()
+  const width = 300
+  const viewportW = window.innerWidth
+  const viewportH = window.innerHeight
+
+  let left = rect.right + 14
+  let top = rect.top + 40
+
+  if (['stack', 'radar', 'regionPie'].includes(key)) {
+    left = rect.left - width - 24
+    top = rect.top + 30
+  } else if (['worldHeat', 'lisa'].includes(key)) {
+    left = rect.right + 16
+    top = rect.top + 40
+  } else if (['whoGap', 'trend', 'riskDonut'].includes(key)) {
+    left = rect.right + 12
+    top = rect.top + 30
+  }
+
+  const margin = 8
+  const maxHeight = Math.min(300, viewportH - margin * 2)
+  left = Math.max(margin, Math.min(left, viewportW - width - margin))
+  top = Math.max(margin, Math.min(top, viewportH - maxHeight - margin))
+
+  popupPosition.left = Math.round(left)
+  popupPosition.top = Math.round(top)
+  popupPosition.width = width
+  popupPosition.maxHeight = Math.round(maxHeight)
+}
+
+const popupStyle = computed(() => ({
+  position: 'fixed',
+  left: `${popupPosition.left}px`,
+  top: `${popupPosition.top}px`,
+  width: `${popupPosition.width}px`,
+  maxHeight: `${popupPosition.maxHeight}px`
+}))
+
+const syncPopupPosition = () => {
+  if (!hoverInfo.key || openMenuKey.value !== hoverInfo.key) return
+  updatePopupPosition(hoverInfo.key)
+}
+
+const panelLayerStyle = (key) =>
+  openMenuKey.value === key || hoverInfo.key === key ? { zIndex: 5200 } : { zIndex: 1 }
+
+const popupTitle = computed(() => (hoverInfo.type === 'conclusion' ? '研究结论' : '图表说明'))
+const popupToneClass = computed(() => (hoverInfo.type === 'conclusion' ? 'popup-conclusion' : 'popup-explain'))
+const popupText = computed(() => {
+  if (!hoverInfo.key || !moduleText[hoverInfo.key]) return ''
+  return hoverInfo.type === 'conclusion' ? moduleText[hoverInfo.key].conclusion : moduleText[hoverInfo.key].explain
+})
+
+watch(
+  () => [hoverInfo.key, openMenuKey.value],
+  () => {
+    nextTick(() => {
+      syncPopupPosition()
+    })
+  },
+  { flush: 'post' }
+)
 
 const metricCards = computed(() => [
   { label: '全球平均预期寿命', value: metricDisplay.lifeExpectancy, unit: '岁', color: '#00f0ff', icon: '🫀' },
@@ -230,6 +398,128 @@ function getField(row, keys, fallback = undefined) {
 
 function normalizeCountryKey(country) {
   return String(country || '').replace(/[\s\-().]/g, '')
+}
+
+const CHINA_UNIFIED_NAME = 'China'
+const TAIWAN_ALIASES = new Set(['taiwan', 'taiwanprovinceofchina'])
+const COUNTRY_NAME_ALIASES = new Map([
+  ['russia', 'Russian Federation'],
+  ['russianfederation', 'Russian Federation'],
+  ['czechrepublic', 'Czechia'],
+  ['czechia', 'Czechia'],
+  ['vietnam', 'Viet Nam'],
+  ['brunei', 'Brunei Darussalam'],
+  ['easttimor', 'Timor-Leste'],
+  ['egypt', 'Egypt, Arab Rep.'],
+  ['kyrgyzstan', 'Kyrgyz Republic'],
+  ['laos', 'Lao PDR'],
+  ['macedonia', 'North Macedonia'],
+  ['republicofserbia', 'Serbia'],
+  ['slovakia', 'Slovak Republic'],
+  ['southkorea', 'Korea, Rep.'],
+  ['syria', 'Syrian Arab Republic'],
+  ['swaziland', 'Eswatini'],
+  ['turkey', 'Turkiye'],
+  ['unitedrepublicoftanzania', 'Tanzania'],
+  ['usa', 'United States'],
+  ['unitedstatesofamerica', 'United States'],
+  ['unitedstates', 'United States']
+])
+
+function normalizeCountryNameForMap(country) {
+  const raw = String(country || '').trim()
+  const normalized = normalizeCountryKey(raw).toLowerCase()
+  if (normalized === 'china' || TAIWAN_ALIASES.has(normalized)) return CHINA_UNIFIED_NAME
+  return raw
+}
+
+function normalizeCountryNameForData(country) {
+  const raw = String(country || '').trim()
+  const normalized = normalizeCountryKey(raw).toLowerCase()
+  if (normalized === 'china' || TAIWAN_ALIASES.has(normalized)) return CHINA_UNIFIED_NAME
+  return COUNTRY_NAME_ALIASES.get(normalized) || raw
+}
+
+function mergeCountryRows(rows, valueFields = []) {
+  const grouped = new Map()
+  rows.forEach((row) => {
+    const country = normalizeCountryNameForMap(row.country)
+    if (!grouped.has(country)) grouped.set(country, [])
+    grouped.get(country).push(row)
+  })
+  return [...grouped.entries()].map(([country, list]) => {
+    const base = { ...list[0], country }
+    valueFields.forEach((field) => {
+      const vals = list.map((r) => parseNumeric(r[field], NaN)).filter((n) => Number.isFinite(n))
+      if (vals.length) {
+        base[field] = vals.reduce((s, n) => s + n, 0) / vals.length
+      }
+    })
+    return base
+  })
+}
+
+function unifyChinaFeatureNames(geoJson) {
+  // Keep original feature names (including Taiwan) to avoid duplicate China labels.
+  return geoJson
+}
+
+function duplicateChinaDataForTaiwan(rows, valueFields = []) {
+  const hasTaiwan = rows.some((r) => String(r?.country || '').trim() === 'Taiwan')
+  if (hasTaiwan) return rows
+  const chinaRow = rows.find((r) => normalizeCountryNameForMap(r.country) === CHINA_UNIFIED_NAME)
+  if (!chinaRow) return rows
+  const taiwanRow = { ...chinaRow, country: 'Taiwan' }
+  valueFields.forEach((field) => {
+    taiwanRow[field] = chinaRow[field]
+  })
+  return [...rows, taiwanRow]
+}
+
+function getClusterLabelByCountry(countryName) {
+  const target = normalizeCountryNameForData(countryName)
+  const row = clusterRows.value.find((r) => normalizeCountryNameForData(r.country) === target)
+  return String(getField(row, ['cluster_label', 'clusterLabel'], '--'))
+}
+
+function bindChinaUnifiedHover(chart) {
+  if (!chart || chart.__chinaUnifiedHoverBound) return
+  chart.__chinaUnifiedHoverBound = true
+  const showSingleChinaTip = () => {
+    const series = chart.getOption()?.series?.[0]
+    const data = series?.data || []
+    const chinaIndex = data.findIndex((item) => {
+      const name = typeof item === 'string' ? item : item?.name
+      return normalizeCountryNameForMap(name) === CHINA_UNIFIED_NAME && String(name) === CHINA_UNIFIED_NAME
+    })
+    if (chinaIndex >= 0) {
+      chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: chinaIndex })
+    } else {
+      chart.dispatchAction({ type: 'showTip', seriesIndex: 0, name: CHINA_UNIFIED_NAME })
+    }
+  }
+  const highlightChinaUnion = () => {
+    chart.dispatchAction({ type: 'highlight', seriesIndex: 0, name: CHINA_UNIFIED_NAME })
+    chart.dispatchAction({ type: 'highlight', seriesIndex: 0, name: 'Taiwan' })
+  }
+  const downplayChinaUnion = () => {
+    chart.dispatchAction({ type: 'downplay', seriesIndex: 0, name: CHINA_UNIFIED_NAME })
+    chart.dispatchAction({ type: 'downplay', seriesIndex: 0, name: 'Taiwan' })
+    chart.dispatchAction({ type: 'hideTip' })
+  }
+  chart.on('mouseover', (params) => {
+    if (normalizeCountryNameForMap(params?.name) !== CHINA_UNIFIED_NAME) return
+    chart.dispatchAction({ type: 'hideTip' })
+    highlightChinaUnion()
+    showSingleChinaTip()
+  })
+  chart.on('mouseout', (params) => {
+    if (normalizeCountryNameForMap(params?.name) !== CHINA_UNIFIED_NAME) return
+    downplayChinaUnion()
+  })
+  chart.on('globalout', () => {
+    downplayChinaUnion()
+  })
 }
 
 function cleanHeaderKey(key) {
@@ -559,8 +849,12 @@ function setRiskDonutChart() {
 function setWorldHeatMap() {
   const chart = chartInstances.worldHeat
   if (!chart || !worldMapReady) return
-  const yearRows = healthRows.value.filter((r) => Number(r.year) === Number(currentYear.value))
-  const data = yearRows.map((r) => ({ name: r.country, value: parseNumeric(r.D_Value) }))
+  const yearRows = mergeCountryRows(
+    healthRows.value.filter((r) => Number(r.year) === Number(currentYear.value)),
+    ['D_Value', 'U3_Life_Expectancy']
+  )
+  const mapRows = duplicateChinaDataForTaiwan(yearRows, ['D_Value', 'U3_Life_Expectancy'])
+  const data = mapRows.map((r) => ({ name: r.country, value: parseNumeric(r.D_Value) }))
   const allDValues = healthRows.value.map((r) => parseNumeric(r.D_Value)).filter((n) => Number.isFinite(n))
   const globalMin = allDValues.length ? Math.min(...allDValues) : 0
   const globalMax = allDValues.length ? Math.max(...allDValues) : 1
@@ -570,10 +864,16 @@ function setWorldHeatMap() {
     ...getCommonChartBase(`全球健康系统韧性时空演变 · 耦合协调度D值空间格局变化热力图（${currentYear.value}年）`),
     tooltip: {
       ...getCommonChartBase('').tooltip,
+      position: (point, params, dom, rect, size) => {
+        if (normalizeCountryNameForMap(params?.name) === CHINA_UNIFIED_NAME) {
+          return [size.viewSize[0] * 0.62, size.viewSize[1] * 0.44]
+        }
+        return point
+      },
       formatter: ({ name, value }) => {
-        const row = yearRows.find((r) => r.country === name)
+        const row = yearRows.find((r) => normalizeCountryNameForData(r.country) === normalizeCountryNameForData(name))
         if (!row) return `${name}<br/>D值: 0`
-        return `${name}<br/>D值: ${parseNumeric(value).toFixed(3)}<br/>预期寿命: ${parseNumeric(row.U3_Life_Expectancy).toFixed(2)}`
+        return `${CHINA_UNIFIED_NAME === normalizeCountryNameForMap(name) ? CHINA_UNIFIED_NAME : name}<br/>D值: ${parseNumeric(value).toFixed(3)}<br/>预期寿命: ${parseNumeric(row.U3_Life_Expectancy).toFixed(2)}<br/>聚类标签: ${getClusterLabelByCountry(name)}`
       }
     },
     visualMap: {
@@ -602,6 +902,13 @@ function setWorldHeatMap() {
           label: { color: '#ffffff' },
           itemStyle: { borderColor: '#00f0ff', borderWidth: 2 }
         },
+        regions: [
+          {
+            name: 'Taiwan',
+            label: { show: false },
+            emphasis: { label: { show: false } }
+          }
+        ],
         itemStyle: {
           borderColor: '#4e6a8d',
           borderWidth: 0.8,
@@ -611,12 +918,15 @@ function setWorldHeatMap() {
       }
     ]
   })
+  bindChinaUnifiedHover(chart)
 }
 
 function setLisaMap() {
   const chart = chartInstances.lisa
   if (!chart || !worldMapReady) return
-  const data = lisaRows.value.map((r) => {
+  const mergedRows = mergeCountryRows(lisaRows.value, ['D_Value', 'Moran_I', 'P_Value', 'Z_Score'])
+  const mapRows = duplicateChinaDataForTaiwan(mergedRows, ['D_Value', 'Moran_I', 'P_Value', 'Z_Score'])
+  const data = mapRows.map((r) => {
     const clusterType = r.cluster || r.lisa_cluster || 'Other'
     let value = 0
     let color = '#81a1c1'
@@ -627,13 +937,26 @@ function setLisaMap() {
       value = 1
       color = '#007acc'
     }
-    return { name: r.country, value, dValue: parseNumeric(r.D_Value), cluster: clusterType, itemStyle: { areaColor: color } }
+    return {
+      name: normalizeCountryNameForMap(r.country),
+      value,
+      dValue: parseNumeric(r.D_Value),
+      cluster: clusterType,
+      itemStyle: { areaColor: color }
+    }
   })
   chart.setOption({
     ...getCommonChartBase('2023 年 D 值 LISA 聚类全球空间分布地图'),
     tooltip: {
       ...getCommonChartBase('').tooltip,
-      formatter: ({ data: d, name }) => `${name}<br/>D_Value: ${(d?.dValue ?? 0).toFixed(4)}<br/>聚类: ${d?.cluster ?? '其他'}`
+      position: (point, params, dom, rect, size) => {
+        if (normalizeCountryNameForMap(params?.name) === CHINA_UNIFIED_NAME) {
+          return [size.viewSize[0] * 0.62, size.viewSize[1] * 0.44]
+        }
+        return point
+      },
+      formatter: ({ data: d, name }) =>
+        `${CHINA_UNIFIED_NAME === normalizeCountryNameForMap(name) ? CHINA_UNIFIED_NAME : name}<br/>D_Value: ${(d?.dValue ?? 0).toFixed(4)}<br/>聚类: ${d?.cluster ?? '其他'}`
     },
     series: [
       {
@@ -646,8 +969,16 @@ function setLisaMap() {
         layoutSize: '140%',
 
         emphasis: {
+          label: { color: '#ffffff' },
           itemStyle: { borderColor: '#00f0ff', borderWidth: 2 }
         },
+        regions: [
+          {
+            name: 'Taiwan',
+            label: { show: false },
+            emphasis: { label: { show: false } }
+          }
+        ],
         itemStyle: {
           borderColor: '#4e6a8d',
           borderWidth: 0.8,
@@ -657,31 +988,36 @@ function setLisaMap() {
       }
     ]
   })
+  bindChinaUnifiedHover(chart)
 }
 
 function setStackChart() {
   const chart = chartInstances.stack
   if (!chart) return
-  const rows = healthRows.value.filter((r) => Number(r.year) === 2023).sort((a, b) => parseNumeric(b.D_Value) - parseNumeric(a.D_Value)).slice(0, 6)
+  const D_VALUE_DISPLAY_SCALE = 0.88
+  const RESOURCE_RISK_DISPLAY_SCALE = 1.18
+  const selectedRows = []
+  const groupCounter = new Map()
+  representativeProfileRows.value.forEach((row) => {
+    const group = String(getField(row, ['cluster_label'], 'UNKNOWN'))
+    const currentCount = groupCounter.get(group) || 0
+    if (currentCount >= 2) return
+    selectedRows.push(row)
+    groupCounter.set(group, currentCount + 1)
+  })
+  const rows = selectedRows.slice(0, 8)
   const countries = rows.map((r) => r.country)
-  const stackSeriesBase = {
-    type: 'bar',
-    stack: 'total',
-    barWidth: 16,
-    barMaxWidth: 20,
-    barCategoryGap: '48%'
-  }
   chart.setOption({
-    ...getCommonChartBase('全球健康资源指标堆叠分布'),
+    ...getCommonChartBase('各类型代表国家指标堆叠图'),
     // Leave a dedicated right-side legend column:
     // - grid shrinks a bit and shifts left
     // - legend becomes vertical on the right
-    grid: { left: 25, right: 110, top: 62, bottom: 20, containLabel: true },
+    grid: { left: 8, right: 135, top: 62, bottom: 20, containLabel: true },
     legend: {
       orient: 'vertical',
-      right: 12,
+      right: -6,
       top: 'middle',
-      data: ['D_Value', 'U1_Score', 'U2_Score', 'U3_Score'],
+      data: ['D_Value', 'risk_result_gap', 'resource_result_gap', 'resource_risk_gap'],
       itemWidth: 14,
       itemHeight: 10,
       itemGap: 10,
@@ -694,6 +1030,9 @@ function setStackChart() {
     },
     xAxis: {
       type: 'value',
+      name: '指标值（堆叠）',
+      min: 0,
+      nameTextStyle: { color: '#81a1c1', padding: [0, 0, 0, 0] },
       axisLabel: { color: '#81a1c1' },
       axisLine: { lineStyle: { color: '#4e6a8d' } }
     },
@@ -704,40 +1043,53 @@ function setStackChart() {
       axisTick: { show: false },
       splitLine: { lineStyle: { color: 'rgba(78,106,141,0.35)' } }
     },
+    tooltip: {
+      ...getCommonChartBase('').tooltip,
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: (params) => {
+        const countryName = params?.[0]?.name || '--'
+        const lines = [countryName]
+        params.forEach((p) => {
+          lines.push(`${p.seriesName}: ${Number(p.value).toFixed(4)}`)
+        })
+        return lines.join('<br/>')
+      }
+    },
     series: [
-      {
-        name: 'U1_Score',
-        type: 'bar',
-        stack: 'total',
-        itemStyle: { color: '#00f0ff' },
-        data: rows.map((r) => parseNumeric(r.U1_Score)),
-        barWidth: '16px',
-        barCategoryGap: '40%'
-      },
-      {
-        name: 'U2_Score',
-        type: 'bar',
-        stack: 'total',
-        itemStyle: { color: '#64ffda' },
-        data: rows.map((r) => parseNumeric(r.U2_Score)),
-        barWidth: '12px',
-        barCategoryGap: '40%'
-      },
-      {
-        name: 'U3_Score',
-        type: 'bar',
-        stack: 'total',
-        itemStyle: { color: '#ff7e79' },
-        data: rows.map((r) => parseNumeric(r.U3_Score)),
-        barWidth: '12px',
-        barCategoryGap: '40%'
-      },
       {
         name: 'D_Value',
         type: 'bar',
         stack: 'total',
         itemStyle: { color: '#f9f06b' },
-        data: rows.map((r) => parseNumeric(r.D_Value)),
+        data: rows.map((r) => parseNumeric(r.D_Value) * D_VALUE_DISPLAY_SCALE),
+        barWidth: '16px',
+        barCategoryGap: '40%'
+      },
+      {
+        name: 'risk_result_gap',
+        type: 'bar',
+        stack: 'total',
+        itemStyle: { color: '#00f0ff' },
+        data: rows.map((r) => parseNumeric(r.risk_result_gap)),
+        barWidth: '12px',
+        barCategoryGap: '40%'
+      },
+      {
+        name: 'resource_result_gap',
+        type: 'bar',
+        stack: 'total',
+        itemStyle: { color: '#64ffda' },
+        data: rows.map((r) => parseNumeric(r.resource_result_gap)),
+        barWidth: '12px',
+        barCategoryGap: '40%'
+      },
+      {
+        name: 'resource_risk_gap',
+        type: 'bar',
+        stack: 'total',
+        itemStyle: { color: '#ff7e79' },
+        data: rows.map((r) => Math.abs(parseNumeric(r.resource_risk_gap)) * RESOURCE_RISK_DISPLAY_SCALE),
         barWidth: '12px',
         barCategoryGap: '40%'
       }
@@ -780,7 +1132,7 @@ function setRadarChart() {
     legend: {
       orient: 'horizontal',
       right: 15,
-      top: 10,
+      top: 42,
       itemGap: 10,
       data: ['全球', '中国'],
       textStyle: { color: '#81a1c1', fontSize: 11 }
@@ -809,22 +1161,18 @@ function setRadarChart() {
 function setRegionPieChart() {
   const chart = chartInstances.regionPie
   if (!chart) return
-  const rows = healthRows.value.filter((r) => Number(r.year) === 2023)
-  const grouped = new Map()
-  rows.forEach((r) => {
-    const region = WHO_REGION_MAP[normalizeCountryKey(r.country)] || 'OTHER'
-    if (!grouped.has(region)) grouped.set(region, [])
-    grouped.get(region).push(parseNumeric(r.D_Value))
-  })
-  const data = [...grouped.entries()].map(([name, values]) => ({
-    name,
-    value: values.reduce((s, n) => s + n, 0) / (values.length || 1)
+  const rows = clusterSummaryRows.value
+  const data = rows.map((row) => ({
+    name: String(getField(row, ['cluster_label'], '未命名类型')),
+    value: Math.max(0, parseNumeric(row.n_countries, 0)),
+    dominantFeature: String(getField(row, ['dominant_feature'], '--')),
+    riskResultGap: parseNumeric(getField(row, ['risk_result_gap'], 0))
   }))
   chart.setOption({
-    ...getCommonChartBase('健康数据地区分布占比'),
+    ...getCommonChartBase('全球国家聚类规模占比（K4初始年）'),
     title: {
       ...getCommonChartBase('').title,
-      text: '健康数据地区分布占比',
+      text: '全球国家聚类规模占比（K4初始年）',
       top: 8,
       left: 12,
       textStyle: { color: '#ffffff', fontSize: 16, fontWeight: 600 }
@@ -832,19 +1180,24 @@ function setRegionPieChart() {
     grid: { left: 45, right: 68, top: 52, bottom: 36, containLabel: true },
     legend: {
       orient: 'vertical',
-      right: 48,
-      top: 'middle',
+      right: 3,
+      top: '35%',
       width: 210,
       itemWidth: 24,
       itemHeight: 18,
       itemGap: 12,
       textStyle: { color: '#81a1c1', fontSize: 12, padding: [0, 0, 0, 6] }
     },
+    tooltip: {
+      ...getCommonChartBase('').tooltip,
+      formatter: ({ data: d }) => `${d?.dominantFeature ?? '--'}<br/>${Number(d?.riskResultGap ?? 0).toFixed(4)}`
+    },
     series: [
       {
         type: 'pie',
         radius: '70%',
         center: ['40%', '57%'],
+        color: ['#00f0ff', '#64ffda', '#f9f06b', '#ff7e79'],
         label: { color: '#ffffff', fontSize: 12 },
         labelLine: { length: 14, length2: 10 },
         labelLayout: { hideOverlap: true, moveOverlap: 'shiftY' },
@@ -912,16 +1265,34 @@ async function loadAllData() {
     '../../Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv',
     `${EXTERNAL_DATA_DIR}/Global_Resource_Need_Capacity_Gap_Trend_2000_2023.csv`
   ]
-  const [health, lisa, whoGap, trend] = await Promise.all([
+  const clusterCandidates = [
+    '/@fs/e:/cursor/projects/health-dashboard/apps/china-screen/xinzeng/tihuanquanqiu/initial_year_country_clusters_k4.csv',
+    `${EXTERNAL_DATA_DIR}/initial_year_country_clusters_k4.csv`
+  ]
+  const clusterSummaryCandidates = [
+    '/@fs/e:/cursor/projects/health-dashboard/apps/china-screen/xinzeng/tihuanquanqiu/cluster_summary_k4_initial_year.csv',
+    `${EXTERNAL_DATA_DIR}/cluster_summary_k4_initial_year.csv`
+  ]
+  const representativeProfileCandidates = [
+    '/@fs/e:/cursor/projects/health-dashboard/apps/china-screen/xinzeng/tihuanquanqiu/representative_country_profiles.csv',
+    `${EXTERNAL_DATA_DIR}/representative_country_profiles.csv`
+  ]
+  const [health, lisa, whoGap, trend, clusters, clusterSummary, representativeProfiles] = await Promise.all([
     loadCsvRows(healthCandidates, ['country', 'year', 'U1_Score', 'U2_Score', 'U3_Score', 'D_Value']),
     loadCsvRows(lisaCandidates, ['country', 'year', 'D_Value']),
     loadCsvRows(whoGapCandidates, ['WHO_Region', 'Mean_Gap']),
-    loadCsvRows(trendCandidates, [['Year', 'year'], 'Mean_Need_Score', 'Mean_U3_Score', 'Mean_Resource_Gap'])
+    loadCsvRows(trendCandidates, [['Year', 'year'], 'Mean_Need_Score', 'Mean_U3_Score', 'Mean_Resource_Gap']),
+    loadCsvRows(clusterCandidates, ['country', 'cluster_label']),
+    loadCsvRows(clusterSummaryCandidates, ['n_countries', 'cluster_label', 'dominant_feature', 'risk_result_gap']),
+    loadCsvRows(representativeProfileCandidates, ['country', 'cluster_label', 'D_Value', 'risk_result_gap', 'resource_result_gap', 'resource_risk_gap'])
   ])
   healthRows.value = health
   lisaRows.value = lisa
   whoGapRows.value = whoGap.length ? whoGap : buildFallbackWhoGap(health)
   trendRows.value = trend.length ? trend : buildFallbackTrend(health)
+  clusterRows.value = clusters
+  clusterSummaryRows.value = clusterSummary
+  representativeProfileRows.value = representativeProfiles
   computeMetrics()
   animateMetricNumbers()
 }
@@ -932,7 +1303,7 @@ async function ensureWorldMap() {
     const res = await fetch(asset('world.geo.json'))
     if (res.ok) {
       const geoJson = await res.json()
-      echarts.registerMap('world', geoJson)
+      echarts.registerMap('world', unifyChinaFeatureNames(geoJson))
       worldMapReady = true
       return
     }
@@ -943,7 +1314,7 @@ async function ensureWorldMap() {
     const res = await fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson')
     if (res.ok) {
       const geoJson = await res.json()
-      echarts.registerMap('world', geoJson)
+      echarts.registerMap('world', unifyChinaFeatureNames(geoJson))
       worldMapReady = true
       return
     }
@@ -967,6 +1338,7 @@ function handleResize() {
   viewportWidth.value = window.innerWidth
   viewportHeight.value = window.innerHeight
   Object.values(chartInstances).forEach((chart) => chart?.resize())
+  syncPopupPosition()
 }
 
 async function waitForChartContainersReady(timeoutMs = 2500) {
@@ -1040,6 +1412,7 @@ onMounted(async () => {
     document.body.classList.add('screen-enter-play')
   })
   window.addEventListener('resize', handleResize)
+  document.addEventListener('click', closeMenuOnOutsideClick)
 
   refreshTimer = setInterval(async () => {
     await refreshDataWithMotion(true)
@@ -1053,6 +1426,8 @@ onBeforeUnmount(() => {
   if (refreshTimer) clearInterval(refreshTimer)
   if (playTimer) clearInterval(playTimer)
   window.removeEventListener('resize', handleResize)
+  document.removeEventListener('click', closeMenuOnOutsideClick)
+  if (hoverTimer) clearTimeout(hoverTimer)
   Object.values(chartInstances).forEach((chart) => chart?.dispose())
 })
 </script>
@@ -1117,19 +1492,47 @@ onBeforeUnmount(() => {
 
         <main class="dashboard-grid">
           <section class="left-col">
-            <div class="panel chart-card fade-in">
+            <div class="panel chart-card fade-in" :style="panelLayerStyle('whoGap')" :ref="(el) => setModulePanelEl('whoGap', el)">
+              <div class="panel-info-control" @mouseleave="closeHoverInfoSoon">
+                <button class="panel-info-btn" @click.stop="toggleModuleMenu('whoGap')">信息</button>
+                <div v-show="openMenuKey === 'whoGap'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                  <button @mouseenter="openHoverInfo('whoGap', 'explain')">图表说明</button>
+                  <button @mouseenter="openHoverInfo('whoGap', 'conclusion')">研究结论</button>
+                </div>
+              </div>
               <div :ref="refs.whoGap" class="chart"></div>
             </div>
-            <div class="panel chart-card fade-in">
+            <div class="panel chart-card fade-in" :style="panelLayerStyle('trend')" :ref="(el) => setModulePanelEl('trend', el)">
+              <div class="panel-info-control" @mouseleave="closeHoverInfoSoon">
+                <button class="panel-info-btn" @click.stop="toggleModuleMenu('trend')">信息</button>
+                <div v-show="openMenuKey === 'trend'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                  <button @mouseenter="openHoverInfo('trend', 'explain')">图表说明</button>
+                  <button @mouseenter="openHoverInfo('trend', 'conclusion')">研究结论</button>
+                </div>
+              </div>
               <div :ref="refs.trend" class="chart"></div>
             </div>
-            <div class="panel chart-card fade-in">
+            <div class="panel chart-card fade-in" :style="panelLayerStyle('riskDonut')" :ref="(el) => setModulePanelEl('riskDonut', el)">
+              <div class="panel-info-control" @mouseleave="closeHoverInfoSoon">
+                <button class="panel-info-btn" @click.stop="toggleModuleMenu('riskDonut')">信息</button>
+                <div v-show="openMenuKey === 'riskDonut'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                  <button @mouseenter="openHoverInfo('riskDonut', 'explain')">图表说明</button>
+                  <button @mouseenter="openHoverInfo('riskDonut', 'conclusion')">研究结论</button>
+                </div>
+              </div>
               <div :ref="refs.riskDonut" class="chart"></div>
             </div>
           </section>
 
           <section class="center-col">
-            <div class="panel map-card fade-in">
+            <div class="panel map-card fade-in" :style="panelLayerStyle('worldHeat')" :ref="(el) => setModulePanelEl('worldHeat', el)">
+              <div class="panel-info-control" @mouseleave="closeHoverInfoSoon">
+                <button class="panel-info-btn" @click.stop="toggleModuleMenu('worldHeat')">信息</button>
+                <div v-show="openMenuKey === 'worldHeat'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                  <button @mouseenter="openHoverInfo('worldHeat', 'explain')">图表说明</button>
+                  <button @mouseenter="openHoverInfo('worldHeat', 'conclusion')">研究结论</button>
+                </div>
+              </div>
               <div :ref="refs.worldHeat" class="chart map-chart"></div>
               <div class="timeline-control">
                 <button class="play-btn" @click="togglePlay">{{ isPlaying ? '❚❚' : '▶' }}</button>
@@ -1139,23 +1542,63 @@ onBeforeUnmount(() => {
                 <span>2023</span>
               </div>
             </div>
-            <div class="panel map-card fade-in">
+            <div class="panel map-card fade-in" :style="panelLayerStyle('lisa')" :ref="(el) => setModulePanelEl('lisa', el)">
+              <div class="panel-info-control" @mouseleave="closeHoverInfoSoon">
+                <button class="panel-info-btn" @click.stop="toggleModuleMenu('lisa')">信息</button>
+                <div v-show="openMenuKey === 'lisa'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                  <button @mouseenter="openHoverInfo('lisa', 'explain')">图表说明</button>
+                  <button @mouseenter="openHoverInfo('lisa', 'conclusion')">研究结论</button>
+                </div>
+              </div>
               <div :ref="refs.lisa" class="chart map-chart"></div>
             </div>
           </section>
 
           <section class="right-col">
-            <div class="panel chart-card fade-in">
+            <div class="panel chart-card fade-in" :style="panelLayerStyle('stack')" :ref="(el) => setModulePanelEl('stack', el)">
+              <div class="panel-info-control panel-info-control--right-shift" @mouseleave="closeHoverInfoSoon">
+                <button class="panel-info-btn" @click.stop="toggleModuleMenu('stack')">信息</button>
+                <div v-show="openMenuKey === 'stack'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                  <button @mouseenter="openHoverInfo('stack', 'explain')">图表说明</button>
+                  <button @mouseenter="openHoverInfo('stack', 'conclusion')">研究结论</button>
+                </div>
+              </div>
               <div :ref="refs.stack" class="chart"></div>
             </div>
-            <div class="panel chart-card fade-in">
+            <div class="panel chart-card fade-in" :style="panelLayerStyle('radar')" :ref="(el) => setModulePanelEl('radar', el)">
+              <div class="panel-info-control panel-info-control--right-shift" @mouseleave="closeHoverInfoSoon">
+                <button class="panel-info-btn" @click.stop="toggleModuleMenu('radar')">信息</button>
+                <div v-show="openMenuKey === 'radar'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                  <button @mouseenter="openHoverInfo('radar', 'explain')">图表说明</button>
+                  <button @mouseenter="openHoverInfo('radar', 'conclusion')">研究结论</button>
+                </div>
+              </div>
               <div :ref="refs.radar" class="chart"></div>
             </div>
-            <div class="panel chart-card fade-in">
+            <div class="panel chart-card fade-in" :style="panelLayerStyle('regionPie')" :ref="(el) => setModulePanelEl('regionPie', el)">
+              <div class="panel-info-control panel-info-control--right-shift" @mouseleave="closeHoverInfoSoon">
+                <button class="panel-info-btn" @click.stop="toggleModuleMenu('regionPie')">信息</button>
+                <div v-show="openMenuKey === 'regionPie'" class="panel-info-menu" @mouseenter="keepHoverInfo" @mouseleave="closeHoverInfoSoon">
+                  <button @mouseenter="openHoverInfo('regionPie', 'explain')">图表说明</button>
+                  <button @mouseenter="openHoverInfo('regionPie', 'conclusion')">研究结论</button>
+                </div>
+              </div>
               <div :ref="refs.regionPie" class="chart"></div>
             </div>
           </section>
         </main>
+        <Teleport to="body">
+          <div
+            v-show="popupVisible(hoverInfo.key)"
+            :class="['panel-info-popup', popupToneClass]"
+            :style="popupStyle"
+            @mouseenter="keepHoverInfo"
+            @mouseleave="closeHoverInfoSoon"
+          >
+            <h4>{{ popupTitle }}</h4>
+            <p>{{ popupText }}</p>
+          </div>
+        </Teleport>
       </div>
     </div>
   </div>

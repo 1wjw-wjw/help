@@ -97,7 +97,7 @@
 
             <div class="content-left-bottom">
               <div class="panel panel-bottom-left public-bg">
-                <div class="public-title">区域健康指标趋势（均值） · 折线图</div>
+                <div class="public-title">医疗健康指标分析·折线图</div>
                 <div class="title-nav" id="zhexian" />
               </div>
               <div class="panel panel-bottom-mid public-bg">
