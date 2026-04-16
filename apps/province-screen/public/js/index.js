@@ -1,8 +1,7 @@
-$(function(){
+﻿$(function(){
 
 	map();
-
-    leidatu();
+    initProvinceRadarKpiCards();
     qipao();
     wuran();
     huaxing();
@@ -26,384 +25,453 @@ $(function(){
 
 })
 
+var PROVINCE_PANEL_CSV_URL = '/data/province-screen/panel_data_tobit.csv';
+var __provincePanelRowsCache = null;
+var __provincePanelRowsPromise = null;
+var __provinceYear = '2012';
+var __provinceYearListeners = [];
+
+function parseProvincePanelRows(text) {
+    var raw = String(text || '').replace(/^\uFEFF/, '').trim();
+    if (!raw) return [];
+    var lines = raw.split(/\r?\n/).filter(function (l) { return String(l).trim().length > 0; });
+    if (lines.length < 2) return [];
+
+    function splitLine(line) {
+        return String(line).split(',').map(function (s) { return String(s).trim(); });
+    }
+
+    var header = splitLine(lines[0]);
+    var idxProvince = header.indexOf('省份');
+    var idxYear = header.indexOf('年份');
+    var idxOTE = header.indexOf('综合效率_OTE');
+    var idxPTE = header.indexOf('纯技术效率_PTE');
+    var idxSE = header.indexOf('规模效率_SE');
+    var idxChild = header.indexOf('3岁以下儿童系统管理率%');
+    if (idxProvince < 0 || idxYear < 0 || idxOTE < 0 || idxPTE < 0 || idxSE < 0 || idxChild < 0) return [];
+
+    var rows = [];
+    for (var i = 1; i < lines.length; i++) {
+        var cols = splitLine(lines[i]);
+        var need = Math.max(idxProvince, idxYear, idxOTE, idxPTE, idxSE, idxChild) + 1;
+        if (cols.length < need) continue;
+        rows.push({
+            province: cols[idxProvince],
+            year: String(cols[idxYear]).trim(),
+            ote: Number(cols[idxOTE]),
+            pte: Number(cols[idxPTE]),
+            se: Number(cols[idxSE]),
+            child: Number(cols[idxChild])
+        });
+    }
+    return rows;
+}
+
+function loadProvincePanelRows() {
+    if (__provincePanelRowsCache) return Promise.resolve(__provincePanelRowsCache);
+    if (__provincePanelRowsPromise) return __provincePanelRowsPromise;
+    __provincePanelRowsPromise = fetch(PROVINCE_PANEL_CSV_URL)
+        .then(function (res) {
+            if (!res.ok) throw new Error('加载失败：' + res.status);
+            return res.text();
+        })
+        .then(function (text) {
+            var rows = parseProvincePanelRows(text);
+            __provincePanelRowsCache = rows;
+            return rows;
+        });
+    return __provincePanelRowsPromise;
+}
+
+function emitProvinceYear(year) {
+    __provinceYear = String(year || '');
+    for (var i = 0; i < __provinceYearListeners.length; i++) {
+        try { __provinceYearListeners[i](__provinceYear); } catch (_e) {}
+    }
+}
+
+function watchProvinceYear(handler) {
+    if (typeof handler !== 'function') return function () {};
+    __provinceYearListeners.push(handler);
+    handler(__provinceYear);
+    return function () {
+        __provinceYearListeners = __provinceYearListeners.filter(function (h) { return h !== handler; });
+    };
+}
+
+function initProvinceRadarKpiCards() {
+    var el0 = document.getElementById('provinceKpi0')
+    var el1 = document.getElementById('provinceKpi1')
+    var el2 = document.getElementById('provinceKpi2')
+    var el3 = document.getElementById('provinceKpi3')
+    if (!el0 || !el1 || !el2 || !el3) return
+
+    var cacheByYear = {}
+
+    function fmtRatio(v, decimals) {
+        if (!isFinite(v)) return '--'
+        return Number(v).toFixed(decimals)
+    }
+
+    function fmtPercent(v, decimals) {
+        if (!isFinite(v)) return '--'
+        return Number(v).toFixed(decimals) + '%'
+    }
+
+    loadProvincePanelRows()
+        .then(function (rows) {
+            var sums = {}
+            rows.forEach(function (r) {
+                var y = String(r.year || '')
+                if (!y) return
+                if (!sums[y]) {
+                    sums[y] = { oteSum: 0, oteCnt: 0, pteSum: 0, pteCnt: 0, seSum: 0, seCnt: 0, childSum: 0, childCnt: 0 }
+                }
+                if (isFinite(r.ote)) { sums[y].oteSum += r.ote; sums[y].oteCnt += 1 }
+                if (isFinite(r.pte)) { sums[y].pteSum += r.pte; sums[y].pteCnt += 1 }
+                if (isFinite(r.se)) { sums[y].seSum += r.se; sums[y].seCnt += 1 }
+                if (isFinite(r.child)) { sums[y].childSum += r.child; sums[y].childCnt += 1 }
+            })
+
+            Object.keys(sums).forEach(function (y) {
+                var s = sums[y]
+                cacheByYear[y] = {
+                    oteAvg: s.oteCnt ? (s.oteSum / s.oteCnt) : NaN,
+                    pteAvg: s.pteCnt ? (s.pteSum / s.pteCnt) : NaN,
+                    seAvg: s.seCnt ? (s.seSum / s.seCnt) : NaN,
+                    childAvg: s.childCnt ? (s.childSum / s.childCnt) : NaN
+                }
+            })
+
+            watchProvinceYear(function (year) {
+                var d = cacheByYear[String(year)] || {}
+                el0.innerText = fmtRatio(d.oteAvg, 3)
+                el1.innerText = fmtRatio(d.pteAvg, 3)
+                el2.innerText = fmtRatio(d.seAvg, 3)
+                el3.innerText = fmtPercent(d.childAvg, 2)
+            })
+        })
+        .catch(function (e) {
+            console && console.warn && console.warn('panel_data_tobit.csv 加载失败（卡片）', e)
+        })
+}
+
 function qipao(){
     var el = document.getElementById('qipao');
     if (!el) return;
     var myChart = echarts.init(el);
 
+    // 区域颜色映射
+    var REGION_COLORS = {
+        '东部': { h: 200, legend: '#2eb4ff' },
+        '中部': { h: 145, legend: '#2ed28c' },
+        '西部': { h: 38,  legend: '#ffb93c' },
+        '东北': { h: 290, legend: '#c864ff' }
+    };
+    var REGION_ORDER = ['东部', '中部', '西部', '东北'];
+
+    // 象限阈值（PTE=0.95, SE=0.95）
+    var Q_PTE = 0.95, Q_SE = 0.95;
+
+    var _parsed = null;
+    var _currentYear = null;
+
     function renderEmpty() {
-        if (window._qipaoRaceTimer) {
-            clearInterval(window._qipaoRaceTimer);
-            window._qipaoRaceTimer = null;
-        }
-        myChart.setOption({
-            tooltip: { show: false },
-            xAxis: { show: false },
-            yAxis: { show: false },
-            series: []
-        }, true);
+        myChart.setOption({ tooltip:{show:false}, xAxis:{show:false}, yAxis:{show:false}, series:[] }, true);
     }
 
-    function normalizeProvinceName(name) {
-        if (name == null) return '';
-        var n = String(name).trim();
-        n = n.replace(/\s+/g, '');
-        n = n.replace(/省|市/g, '');
-        n = n.replace(/壮族自治区|回族自治区|维吾尔自治区|自治区/g, '');
-        n = n.replace(/特别行政区/g, '');
-        return n;
+    function radialFill(h) {
+        return new echarts.graphic.RadialGradient(0.38, 0.35, 0.62, [
+            { offset: 0,    color: 'hsla('+h+',100%,92%,0.95)' },
+            { offset: 0.30, color: 'hsla('+h+', 95%,72%,0.82)' },
+            { offset: 0.65, color: 'hsla('+h+', 88%,52%,0.60)' },
+            { offset: 1,    color: 'hsla('+h+', 80%,34%,0.35)' }
+        ]);
     }
 
-    function parseQipaoXlsx(arrayBuffer) {
-        if (!window.XLSX) throw new Error('XLSX 未加载');
-        var wb = window.XLSX.read(arrayBuffer, { type: 'array' });
-        var sheetName = wb.SheetNames && wb.SheetNames.length ? wb.SheetNames[0] : null;
-        if (!sheetName) return null;
-        var sheet = wb.Sheets[sheetName];
-        var table = window.XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
-        if (!table || table.length < 2) return null;
-
-        var rows = table.filter(function (r) {
-            return r && r.length && String(r.join('')).trim() !== '';
-        });
-        if (rows.length < 2) return null;
-
-        var header = rows[0].map(function (x) { return String(x || '').trim(); });
-        function normalizeYear(v) {
-            if (v == null) return '';
-            if (typeof v === 'number') {
-                // 直接年份
-                if (v >= 1900 && v <= 2200) return String(Math.round(v));
-                // Excel 日期序列号
-                if (window.XLSX && window.XLSX.SSF && v > 20000 && v < 90000) {
-                    var d = window.XLSX.SSF.parse_date_code(v);
-                    if (d && d.y) return String(d.y);
-                }
-                return String(Math.round(v));
-            }
-            if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
-                return String(v.getFullYear());
-            }
-            var s = String(v).trim();
-            var m = s.match(/(19|20)\d{2}/);
-            return m ? m[0] : s;
+    function parseDEACsv(text) {
+        var raw = String(text||'').replace(/^\uFEFF/,'').trim();
+        if (!raw) return null;
+        var lines = raw.split(/\r?\n/).filter(function(l){ return String(l).trim().length>0; });
+        if (lines.length < 2) return null;
+        function sp(line){ return String(line).split(',').map(function(s){ return String(s).trim(); }); }
+        var hdr = sp(lines[0]);
+        var iP=hdr.indexOf('省份'), iR=hdr.indexOf('区域'), iY=hdr.indexOf('年份');
+        var iO=hdr.indexOf('综合效率_OTE'), iPTE=hdr.indexOf('纯技术效率_PTE'), iSE=hdr.indexOf('规模效率_SE');
+        if (iP<0||iY<0||iO<0||iPTE<0||iSE<0) return null;
+        var rows=[];
+        for (var i=1;i<lines.length;i++){
+            var c=sp(lines[i]);
+            var need=Math.max(iP,iR,iY,iO,iPTE,iSE)+1;
+            if (c.length<need) continue;
+            var ote=Number(c[iO]), pte=Number(c[iPTE]), se=Number(c[iSE]);
+            if (!isFinite(ote)||!isFinite(pte)||!isFinite(se)) continue;
+            rows.push({ province:c[iP], region:iR>=0?c[iR]:'东部', year:c[iY], ote:ote, pte:pte, se:se });
         }
-        function findCol(re) {
-            for (var i = 0; i < header.length; i++) if (re.test(header[i])) return i;
-            return -1;
-        }
+        if (!rows.length) return null;
+        var yearSet={}, provRegion={};
+        rows.forEach(function(r){ yearSet[r.year]=true; provRegion[r.province]=r.region; });
+        var years=Object.keys(yearSet).sort(function(a,b){ return Number(a)-Number(b); });
+        var allProv=Object.keys(provRegion).sort();
+        var provYearMap={};
+        allProv.forEach(function(p){ provYearMap[p]={}; });
+        rows.forEach(function(r){ provYearMap[r.province][r.year]={ote:r.ote,pte:r.pte,se:r.se}; });
+        return { years:years, allProvinces:allProv, provYearMap:provYearMap, provRegionMap:provRegion };
+    }
 
-        var hasHeader = header.some(function (h) { return /省|地区|年|耦|value|name/i.test(h); });
-        var start = hasHeader ? 1 : 0;
+    function buildOption(parsed, year) {
+        var allProv = parsed.allProvinces;
+        var provYearMap = parsed.provYearMap;
+        var provRegionMap = parsed.provRegionMap;
 
-        var provinceCol = findCol(/省|地区|province|name/i);
-        if (provinceCol < 0) provinceCol = 0;
-        var yearCol = findCol(/年份|时间|year/i);
-        var valueCol = findCol(/耦合度|value|值/i);
-
-        var raw = [];
-
-        // 1) 优先按宽表：首列省份，后续列名是年份
-        var yearCols = [];
-        for (var c = 0; c < header.length; c++) {
-            if (c === provinceCol) continue;
-            var yFromHeader = normalizeYear(header[c]);
-            if (/^(19|20)\d{2}$/.test(yFromHeader)) {
-                yearCols.push({ col: c, year: yFromHeader });
-            }
-        }
-        if (yearCols.length > 0) {
-            for (var rr = start; rr < rows.length; rr++) {
-                var row = rows[rr] || [];
-                var prov = normalizeProvinceName(row[provinceCol]);
-                if (!prov) continue;
-                for (var yc = 0; yc < yearCols.length; yc++) {
-                    var meta = yearCols[yc];
-                    var val = Number(row[meta.col]);
-                    if (!isFinite(val)) continue;
-                    raw.push({ province: prov, year: meta.year, value: val });
-                }
-            }
-        }
-
-        // 2) 宽表未命中时，再按长表：省份/年份/耦合度
-        if (!raw.length && yearCol >= 0 && valueCol >= 0) {
-            for (var r = start; r < rows.length; r++) {
-                var line = rows[r] || [];
-                var p = normalizeProvinceName(line[provinceCol]);
-                var y = normalizeYear(line[yearCol]);
-                var v = Number(line[valueCol]);
-                if (!p || !y || !isFinite(v)) continue;
-                raw.push({ province: p, year: y, value: v });
-            }
-        }
-        if (!raw.length) return null;
-
-        // 使用完整省份数据（不裁剪）
-        var provSet = {};
-        raw.forEach(function (d) { provSet[d.province] = true; });
-        var allProvinces = Object.keys(provSet).sort();
-
-        var yearSet = {};
-        raw.forEach(function (d) { yearSet[d.year] = true; });
-        var years = Object.keys(yearSet).sort(function (a, b) {
-            var na = Number(a), nb = Number(b);
-            if (isFinite(na) && isFinite(nb)) return na - nb;
-            return String(a).localeCompare(String(b));
-        });
-
-        var yearIndex = {};
-        years.forEach(function (y, i) { yearIndex[y] = i; });
-        var provIndex = {};
-        allProvinces.forEach(function (p, i) { provIndex[p] = i; });
-
-        var points = raw
-            .filter(function (d) { return provIndex[d.province] != null && yearIndex[d.year] != null; })
-            .map(function (d) {
-                return {
-                    name: d.province,
-                    year: d.year,
-                    value: [yearIndex[d.year], provIndex[d.province], d.value]
-                };
+        // 全局 OTE 范围（用于气泡大小，跨年一致）
+        var oteMin=Infinity, oteMax=-Infinity;
+        allProv.forEach(function(p){
+            parsed.years.forEach(function(y){
+                var d=provYearMap[p][y];
+                if(d){ oteMin=Math.min(oteMin,d.ote); oteMax=Math.max(oteMax,d.ote); }
             });
+        });
+        if(!isFinite(oteMin)){oteMin=0;oteMax=1;}
 
-        if (!points.length) return null;
-        var minS = Math.min.apply(null, points.map(function (p) { return p.value[2]; }));
-        var maxS = Math.max.apply(null, points.map(function (p) { return p.value[2]; }));
+        // 当年数据
+        var yearData = [];
+        allProv.forEach(function(p){
+            var d = provYearMap[p][year];
+            if (!d) return;
+            yearData.push({ province:p, region:provRegionMap[p]||'东部', ote:d.ote, pte:d.pte, se:d.se });
+        });
 
-        return { points: points, minS: minS, maxS: maxS, years: years, provinces: allProvinces };
+        // 轴范围（当年数据）
+        var seVals  = yearData.map(function(d){return d.se;});
+        var pteVals = yearData.map(function(d){return d.pte;});
+        var seMin=Math.min.apply(null,seVals),  seMax=Math.max.apply(null,seVals);
+        var pteMin=Math.min.apply(null,pteVals),pteMax=Math.max.apply(null,pteVals);
+        if(!isFinite(seMin)){seMin=0.6;seMax=1.05;}
+        if(!isFinite(pteMin)){pteMin=0.6;pteMax=1.05;}
+        var padX=(seMax-seMin)*0.12||0.03, padY=(pteMax-pteMin)*0.12||0.03;
+        var xMin=Math.max(0.55,seMin-padX),  xMax=Math.min(1.05,seMax+padX);
+        var yMin=Math.max(0.55,pteMin-padY), yMax=Math.min(1.05,pteMax+padY);
+
+        function sizeFor(ote){
+            var t=(ote-oteMin)/(oteMax-oteMin||1);
+            t=Math.max(0,Math.min(1,t));
+            t=Math.pow(t,0.5);
+            return 6+t*16; // 6~22px
+        }
+
+        // 按区域分组 series
+        var seriesMap={};
+        REGION_ORDER.forEach(function(reg){ seriesMap[reg]=[]; });
+        yearData.forEach(function(d){
+            var reg=d.region, c=REGION_COLORS[reg]||REGION_COLORS['东部'];
+            var h=c.h;
+            seriesMap[reg].push({
+                value:[d.se, d.pte],
+                symbolSize: sizeFor(d.ote),
+                _province: d.province,
+                _ote: d.ote,
+                itemStyle:{
+                    color: radialFill(h),
+                    borderColor:'hsla('+h+',95%,85%,0.85)',
+                    borderWidth:1,
+                    shadowBlur:14,
+                    shadowColor:'hsla('+h+',90%,65%,0.55)',
+                    opacity:0.92
+                }
+            });
+        });
+
+        var bubbleSeries = REGION_ORDER.map(function(reg){
+            var c=REGION_COLORS[reg]||REGION_COLORS['东部'];
+            return {
+                name: reg,
+                type:'scatter',
+                color:'hsl('+c.h+',78%,58%)',
+                data: seriesMap[reg],
+                emphasis:{
+                    itemStyle:{
+                        borderColor:'rgba(255,255,255,0.95)',
+                        borderWidth:2,
+                        shadowBlur:20,
+                        shadowColor:'rgba(46,200,207,0.6)',
+                        opacity:1
+                    }
+                },
+                label:{
+                    show:false
+                }
+            };
+        }).filter(function(s){return s.data&&s.data.length;});
+
+        // 象限背景（markArea）附在第一个 series 上
+        var qSE  = Math.max(xMin+0.001, Math.min(xMax-0.001, Q_SE));
+        var qPTE = Math.max(yMin+0.001, Math.min(yMax-0.001, Q_PTE));
+        var quadrantSeries = {
+            name:'_quad',
+            type:'scatter',
+            data:[],
+            silent:true,
+            markArea:{
+                silent:true,
+                data:[
+                    // 右上：效率前沿型
+                    [{ coord:[qSE,qPTE], itemStyle:{color:'rgba(46,200,140,0.06)'} },
+                     { coord:[xMax,yMax] }],
+                    // 左上：规模待优化型
+                    [{ coord:[xMin,qPTE], itemStyle:{color:'rgba(255,185,60,0.05)'} },
+                     { coord:[qSE,yMax] }],
+                    // 右下：转化短板型
+                    [{ coord:[qSE,yMin], itemStyle:{color:'rgba(255,100,80,0.05)'} },
+                     { coord:[xMax,qPTE] }],
+                    // 左下：双重改进型
+                    [{ coord:[xMin,yMin], itemStyle:{color:'rgba(120,120,180,0.05)'} },
+                     { coord:[qSE,qPTE] }]
+                ]
+            },
+            markLine:{
+                silent:true,
+                symbol:['none','none'],
+                lineStyle:{ color:'rgba(46,200,207,0.22)', type:'dashed', width:1 },
+                data:[
+                    [{ coord:[qSE,yMin] },{ coord:[qSE,yMax] }],
+                    [{ coord:[xMin,qPTE] },{ coord:[xMax,qPTE] }]
+                ]
+            }
+        };
+
+        return {
+            animationDuration: 500,
+            animationEasingUpdate: 'cubicOut',
+            grid:{ left:'8%', right:'10%', top:'10%', bottom:'23%', containLabel:false },
+            legend:{
+                type:'plain',
+                orient:'horizontal',
+                bottom:45,
+                left:'center',
+                itemWidth:16, itemHeight:16, itemGap:18,
+                textStyle:{ color:'rgba(207,232,255,0.9)', fontSize:13 },
+                data: REGION_ORDER.map(function(reg){
+                    var c=REGION_COLORS[reg];
+                    return { name:reg, icon:'circle', itemStyle:{color:c.legend} };
+                })
+            },
+            tooltip:{
+                trigger:'item',
+                backgroundColor:'rgba(8,18,42,0.94)',
+                borderColor:'rgba(46,200,207,0.45)',
+                borderWidth:1,
+                textStyle:{ color:'#e8f4ff', fontSize:12 },
+                formatter:function(p){
+                    if(!p||!p.data||p.seriesName==='_quad') return '';
+                    var d=p.data;
+                    var se  =isFinite(d.value[0])?Number(d.value[0]).toFixed(4):'-';
+                    var pte =isFinite(d.value[1])?Number(d.value[1]).toFixed(4):'-';
+                    var ote =isFinite(d._ote)?Number(d._ote).toFixed(4):'-';
+                    // 象限分类
+                    var sx=d.value[0], sy=d.value[1];
+                    var qtype = sx>=Q_SE&&sy>=Q_PTE?'效率前沿型'
+                               :sx<Q_SE&&sy>=Q_PTE?'规模待优化型'
+                               :sx>=Q_SE&&sy<Q_PTE?'转化短板型':'双重改进型';
+                    return '<b>'+(d._province||p.seriesName)+'</b>&nbsp;&nbsp;'+year+' 年'
+                        +'<br/>SE（规模效率）：'+se
+                        +'<br/>PTE（纯技术效率）：'+pte
+                        +'<br/>OTE（综合效率）：'+ote
+                        +'<br/><span style="color:rgba(46,200,207,0.9)">类型：'+qtype+'</span>';
+                }
+            },
+            xAxis:{
+                type:'value', min:xMin, max:xMax,
+                name:'',
+                nameLocation:'end',
+                nameGap:8,
+                nameTextStyle:{ color:'rgba(180,220,255,0.8)', fontSize:10 },
+                axisLine:{ lineStyle:{ color:'rgba(46,200,207,0.45)', width:1 } },
+                axisTick:{ show:false },
+                axisLabel:{ color:'rgba(200,228,255,0.85)', fontSize:9,
+                    formatter:function(v){ return Number(v).toFixed(2); },
+                    margin:4
+                },
+                splitLine:{ lineStyle:{ color:'rgba(46,200,207,0.08)', type:'dashed' } }
+            },
+            yAxis:{
+                type:'value', min:yMin, max:yMax,
+                name:'PTE',
+                nameTextStyle:{ color:'rgba(180,220,255,0.8)', fontSize:10 },
+                axisLine:{ show:true, lineStyle:{ color:'rgba(46,200,207,0.25)' } },
+                splitLine:{ lineStyle:{ color:'rgba(46,200,207,0.08)', type:'dashed' } },
+                axisLabel:{ color:'rgba(200,228,255,0.82)', fontSize:9,
+                    formatter:function(v){ return Number(v).toFixed(2); },
+                    margin:4
+                }
+            },
+            // 年份滑动条（X轴 dataZoom 改为年份选择，用 graphic 文字显示当前年）
+            graphic:[
+                {
+                    type:'text',
+                    left:'center',
+                    bottom:20,
+                    style:{
+                        text:'当前年份：'+year,
+                        fill:'rgba(46,200,207,0.92)',
+                        fontSize:14,
+                        fontWeight:'bold'
+                    }
+                },
+                {
+                    type:'text',
+                    right:'10%',
+                    bottom:'23%',
+                    style:{
+                        text:'SE（规模效率）',
+                        fill:'rgba(180,220,255,0.8)',
+                        fontSize:10,
+                        textAlign:'right'
+                    }
+                }
+            ],
+            series: [quadrantSeries].concat(bubbleSeries)
+        };
     }
 
-    fetch(encodeURI('data/qipao.xlsx'))
-        .then(function (res) {
-            if (!res.ok) throw new Error('加载失败：' + res.status);
-            return res.arrayBuffer();
+    function renderYear(year) {
+        if (!_parsed) return;
+        _currentYear = year;
+        myChart.setOption(buildOption(_parsed, year), true);
+    }
+
+    fetch('data/DEA_health_results.csv')
+        .then(function(res){
+            if(!res.ok) throw new Error('加载失败：'+res.status);
+            return res.text();
         })
-        .then(function (buf) {
-            var parsed = parseQipaoXlsx(buf);
+        .then(function(text){
+            var parsed = parseDEACsv(text);
             if (!parsed) return renderEmpty();
+            _parsed = parsed;
 
-            // 组装“省份 -> 各年份耦合度”序列
-            var provYearMap = {};
-            parsed.provinces.forEach(function (p) { provYearMap[p] = {}; });
-            parsed.points.forEach(function (pt) {
-                var yi = Number(pt.value[0]);
-                var pi = Number(pt.value[1]);
-                var year = parsed.years[yi];
-                var province = parsed.provinces[pi];
-                var val = Number(pt.value[2]);
-                if (province && year && isFinite(val)) {
-                    provYearMap[province][year] = val;
+            // 初始渲染：用当前地图年份或第一年
+            var initYear = __provinceYear || parsed.years[0];
+            if (parsed.years.indexOf(initYear) < 0) initYear = parsed.years[0];
+            renderYear(initYear);
+
+            // 监听地图年份变化
+            watchProvinceYear(function(year){
+                if (!_parsed) return;
+                var y = String(year||'');
+                if (_parsed.years.indexOf(y) >= 0) {
+                    renderYear(y);
                 }
             });
-
-            var years = parsed.years;
-            var allProv = parsed.provinces;
-
-            var globalMin = Infinity;
-            var globalMax = -Infinity;
-            allProv.forEach(function (p) {
-                years.forEach(function (y) {
-                    var v = provYearMap[p][y];
-                    if (isFinite(v)) {
-                        globalMin = Math.min(globalMin, v);
-                        globalMax = Math.max(globalMax, v);
-                    }
-                });
-            });
-            if (!isFinite(globalMin)) {
-                globalMin = 0;
-                globalMax = 1;
-            }
-            var padY = (globalMax - globalMin) * 0.08 || 0.02;
-            var yMin = Math.max(0, globalMin - padY);
-            var yMax = globalMax + padY;
-
-            function sizeFor(v) {
-                var t = (v - globalMin) / (globalMax - globalMin || 1);
-                t = Math.max(0, Math.min(1, t));
-                t = Math.pow(t, 0.62);
-                return 10 + t * 36;
-            }
-
-            /** 黄金角分布全色相，相邻省色差大、易辨认 */
-            function hueForProvince(i) {
-                return Math.floor((i * 137.508) % 360);
-            }
-
-            function radialFill(h) {
-                return new echarts.graphic.RadialGradient(0.42, 0.38, 0.58, [
-                    { offset: 0, color: 'hsla(' + h + ', 92%, 74%, 0.78)' },
-                    { offset: 0.32, color: 'hsla(' + h + ', 88%, 56%, 0.52)' },
-                    { offset: 0.72, color: 'hsla(' + h + ', 78%, 40%, 0.34)' },
-                    { offset: 1, color: 'hsla(' + h + ', 70%, 26%, 0.2)' }
-                ]);
-            }
-
-            function radialFillTibet() {
-                return new echarts.graphic.RadialGradient(0.45, 0.4, 0.55, [
-                    { offset: 0, color: 'rgba(186, 200, 255, 0.72)' },
-                    { offset: 0.4, color: 'rgba(120, 140, 255, 0.48)' },
-                    { offset: 1, color: 'rgba(60, 40, 120, 0.35)' }
-                ]);
-            }
-
-            if (window._qipaoRaceTimer) {
-                clearInterval(window._qipaoRaceTimer);
-                window._qipaoRaceTimer = null;
-            }
-
-            var lastYearIdx = years.length - 1;
-            var tierTop = { '北京': true, '上海': true };
-            var bubbleSeries = allProv.map(function (province, pi) {
-                var h = hueForProvince(pi);
-                var isTibet = province === '西藏';
-                var pts = [];
-                years.forEach(function (y, i) {
-                    var v = provYearMap[province][y];
-                    if (!isFinite(v)) return;
-                    v = Number(v);
-                    var sz = sizeFor(v);
-                    var isHLJLast = province === '黑龙江' && i === lastYearIdx;
-                    var isTopTier = !!tierTop[province];
-                    var fill = isTibet ? radialFillTibet() : radialFill(h);
-                    var borderW = 1.2;
-                    var borderC = 'hsla(' + h + ', 88%, 72%, 0.62)';
-                    var blur = 14;
-                    var sh = 'hsla(' + h + ', 82%, 52%, 0.48)';
-                    if (isTopTier) {
-                        borderW = 1.5;
-                        borderC = 'rgba(255, 224, 140, 0.65)';
-                        blur = 18;
-                        sh = 'rgba(255, 210, 120, 0.4)';
-                    }
-                    if (isHLJLast) {
-                        sz *= 1.18;
-                        borderW = 2;
-                        borderC = 'rgba(255, 200, 100, 0.92)';
-                        blur = 22;
-                        sh = 'rgba(255, 180, 60, 0.55)';
-                    }
-                    if (isTibet) {
-                        borderC = 'rgba(180, 190, 255, 0.6)';
-                        blur = 16;
-                        sh = 'rgba(140, 150, 255, 0.42)';
-                    }
-                    pts.push({
-                        value: [i, v],
-                        symbolSize: sz,
-                        itemStyle: {
-                            color: fill,
-                            borderColor: borderC,
-                            borderWidth: borderW,
-                            shadowBlur: blur,
-                            shadowColor: sh,
-                            shadowOffsetY: 0,
-                            opacity: 0.82
-                        }
-                    });
-                });
-                var legendHue = isTibet ? 248 : h;
-                return {
-                    name: province,
-                    type: 'scatter',
-                    color: 'hsl(' + legendHue + ', 78%, 58%)',
-                    data: pts,
-                    emphasis: {
-                        itemStyle: {
-                            borderColor: 'rgba(255, 255, 255, 0.95)',
-                            borderWidth: 2.2,
-                            shadowBlur: 26,
-                            shadowColor: 'rgba(46, 200, 207, 0.55)',
-                            opacity: 0.98
-                        }
-                    }
-                };
-            }).filter(function (s) { return s.data && s.data.length; });
-
-            if (!bubbleSeries.length) return renderEmpty();
-
-            myChart.setOption({
-                animationDuration: 750,
-                animationEasingUpdate: 'cubicOut',
-                grid: { left: '7.5%', right: '10%', top: '9%', bottom: '30%' },
-                legend: {
-                    type: 'scroll',
-                    orient: 'horizontal',
-                    bottom: 80,
-                    left: 'center',
-                    width: '90%',
-                    textStyle: { color: 'rgba(207, 232, 255, 0.88)', fontSize: 9 },
-                    pageTextStyle: { color: 'rgba(207, 232, 255, 0.9)' },
-                    pageIconColor: 'rgba(46, 200, 207, 0.75)',
-                    itemWidth: 19,
-                    itemHeight: 19,
-                    itemGap: 5
-                },
-                tooltip: {
-                    trigger: 'item',
-                    backgroundColor: 'rgba(8, 18, 42, 0.94)',
-                    borderColor: 'rgba(46, 200, 207, 0.45)',
-                    borderWidth: 1,
-                    textStyle: { color: '#e8f4ff', fontSize: 12 },
-                    formatter: function (p) {
-                        if (!p || !p.seriesName || !p.value) return '';
-                        var yi = p.value[0];
-                        var val = p.value[1];
-                        var yr = years[yi];
-                        return p.seriesName + '<br/>' + yr + ' 年<br/>耦合度：' + (isFinite(val) ? Number(val).toFixed(4) : '');
-                    }
-                },
-                xAxis: {
-                    type: 'category',
-                    data: years,
-                    name: '年份',
-                    nameGap: 24,
-                    nameTextStyle: { color: 'rgba(180, 220, 255, 0.8)', fontSize: 11 },
-                    axisLine: { lineStyle: { color: 'rgba(46, 200, 207, 0.45)', width: 1 } },
-                    axisTick: { show: false },
-                    axisLabel: { color: 'rgba(200, 228, 255, 0.88)', fontSize: 11 },
-                    splitLine: { show: false }
-                },
-                yAxis: {
-                    type: 'value',
-                    min: yMin,
-                    max: yMax,
-                    name: '耦合度',
-                    nameTextStyle: { color: 'rgba(180, 220, 255, 0.8)', fontSize: 11 },
-                    axisLine: { show: true, lineStyle: { color: 'rgba(46, 200, 207, 0.25)' } },
-                    splitLine: {
-                        lineStyle: {
-                            color: 'rgba(46, 200, 207, 0.12)',
-                            type: 'dashed'
-                        }
-                    },
-                    axisLabel: { color: 'rgba(200, 228, 255, 0.82)', fontSize: 10 }
-                },
-                dataZoom: [
-                    { type: 'inside', xAxisIndex: 0, start: 0, end: 100 },
-                    {
-                        type: 'slider',
-                        xAxisIndex: 0,
-                        height: 20,
-                        bottom: 35,
-                        borderColor: 'rgba(46, 200, 207, 0.25)',
-                        fillerColor: 'rgba(46, 200, 207, 0.28)',
-                        backgroundColor: 'rgba(12, 26, 52, 0.65)',
-                        handleStyle: { color: 'rgba(120, 220, 255, 0.85)', borderColor: 'rgba(46, 200, 207, 0.6)' },
-                        textStyle: { color: 'rgba(200, 228, 255, 0.75)', fontSize: 10 }
-                    }
-                ],
-                series: bubbleSeries
-            }, true);
         })
-        .catch(function (e) {
-            console && console.warn && console.warn('qipao.xlsx 加载失败', e);
+        .catch(function(e){
+            console && console.warn && console.warn('DEA_health_results.csv 加载失败', e);
             renderEmpty();
         });
 
-    window.addEventListener('resize', function () { myChart.resize(); });
+    window.addEventListener('resize', function(){ myChart.resize(); });
 }
+
 
 function map(){
     var myChart = echarts.init(document.getElementById('map'));
@@ -466,7 +534,9 @@ function map(){
                 trigger: 'item',
                 formatter: function (p) {
                     var raw = (p && p.data && p.data.rawValue != null) ? p.data.rawValue : ((p && p.value != null) ? p.value : '-');
-                    return (p && p.name ? p.name : '') + '<br/>年份：' + yearLabel + '<br/>耦合度：' + raw;
+                    var ote = Number(raw);
+                    var oteText = isFinite(ote) ? ote.toFixed(4) : raw;
+                    return (p && p.name ? p.name : '') + '<br/>年份：' + yearLabel + '<br/>OTE：' + oteText;
                 }
             },
             visualMap: {
@@ -533,7 +603,7 @@ function map(){
                 }]
             },
             series: [{
-                name: '耦合度',
+                name: 'OTE',
                 type: 'map',
                 mapType: 'china',
                 geoIndex: 0,
@@ -642,37 +712,46 @@ function map(){
     var slider = document.getElementById('mapYearSlider');
     var yearLabelEl = document.getElementById('mapYearLabel');
     var controlsEl = document.getElementById('mapControls');
+    var playBtnEl = document.getElementById('mapPlayToggle');
+    var yearPlayTimer = null;
+    var isYearPlaying = true;
+    var YEAR_START = 2012;
+    var YEAR_END = 2024;
+    var YEAR_PLAY_INTERVAL = 1800;
 
-    function parseXlsxToRows(arrayBuffer) {
-        if (!window.XLSX) throw new Error('XLSX 未加载');
-        var wb = window.XLSX.read(arrayBuffer, { type: 'array' });
-        var sheetName = wb.SheetNames && wb.SheetNames.length ? wb.SheetNames[0] : null;
-        if (!sheetName) return [];
-        var sheet = wb.Sheets[sheetName];
-        // header:1 -> 二维数组（每行一个数组），更好做表头识别
-        var table = window.XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
-        if (!table || !table.length) return [];
+    function ensureMapPlayButton() {
+        if (playBtnEl) return playBtnEl;
+        if (!slider || !slider.parentNode) return null;
+        playBtnEl = document.createElement('button');
+        playBtnEl.id = 'mapPlayToggle';
+        playBtnEl.type = 'button';
+        playBtnEl.innerText = '暂停';
+        playBtnEl.style.marginLeft = '10px';
+        playBtnEl.style.padding = '0 10px';
+        playBtnEl.style.height = '24px';
+        playBtnEl.style.lineHeight = '24px';
+        playBtnEl.style.fontSize = '12px';
+        playBtnEl.style.fontWeight = '500';
+        playBtnEl.style.whiteSpace = 'nowrap';
+        playBtnEl.style.color = '#cfe8ff';
+        playBtnEl.style.background = 'rgba(12,26,52,0.72)';
+        playBtnEl.style.border = '1px solid rgba(46,200,207,0.4)';
+        playBtnEl.style.borderRadius = '4px';
+        playBtnEl.style.cursor = 'pointer';
+        slider.parentNode.appendChild(playBtnEl);
+        return playBtnEl;
+    }
 
-        var headerRow = table[0].map(function (x) { return String(x || '').trim(); });
-        var hasHeader = headerRow.length >= 3 && (
-            headerRow[0].indexOf('省') !== -1 ||
-            headerRow[0].indexOf('地区') !== -1 ||
-            headerRow[1].indexOf('年') !== -1 ||
-            headerRow[2].indexOf('耦') !== -1
-        );
+    function updatePlayBtnText() {
+        if (!playBtnEl) return;
+        playBtnEl.innerText = isYearPlaying ? '暂停' : '播放';
+    }
 
-        var start = hasHeader ? 1 : 0;
-        var rows = [];
-        for (var i = start; i < table.length; i++) {
-            var r = table[i] || [];
-            if (r.length < 3) continue;
-            rows.push({
-                province: r[0],
-                year: r[1],
-                value: r[2]
-            });
+    function stopYearPlay() {
+        if (yearPlayTimer) {
+            clearInterval(yearPlayTimer);
+            yearPlayTimer = null;
         }
-        return rows;
     }
 
     function loadAndRenderFromRows(rows) {
@@ -689,7 +768,10 @@ function map(){
                 byYear[year].push({ name: prov, value: v });
             });
 
-            var years = Object.keys(yearsSet).sort(function (a, b) {
+            var years = Object.keys(yearsSet).filter(function (y) {
+                var ny = Number(y);
+                return isFinite(ny) && ny >= YEAR_START && ny <= YEAR_END;
+            }).sort(function (a, b) {
                 var na = Number(a), nb = Number(b);
                 if (isFinite(na) && isFinite(nb)) return na - nb;
                 return String(a).localeCompare(String(b));
@@ -707,6 +789,7 @@ function map(){
                 var safeIdx = Math.max(0, Math.min(idx, years.length - 1));
                 var y = years[safeIdx];
                 if (yearLabelEl) yearLabelEl.innerText = '年份：' + y;
+                emitProvinceYear(y);
                 var rawData = byYear[y] || [];
                 // 当前年份内用 P10~P90 作色标区间，避免单省极端值拉满跨度导致主体省份同色
                 var yr = getRobustYearRangeForMap(rawData);
@@ -718,42 +801,60 @@ function map(){
                 slider.min = 0;
                 slider.max = Math.max(0, years.length - 1);
                 slider.step = 1;
-                slider.value = 0;
+                var startIdx = years.indexOf(String(YEAR_START));
+                if (startIdx < 0) startIdx = 0;
+                slider.value = startIdx;
                 slider.oninput = function () {
                     renderAtIndex(Number(slider.value));
                 };
             }
 
+            ensureMapPlayButton();
+            if (playBtnEl) {
+                playBtnEl.onclick = function () {
+                    isYearPlaying = !isYearPlaying;
+                    updatePlayBtnText();
+                };
+            }
+            updatePlayBtnText();
+
             if (controlsEl) controlsEl.style.display = '';
-            renderAtIndex(0);
+            var initIdx = years.indexOf(String(YEAR_START));
+            if (initIdx < 0) initIdx = 0;
+            renderAtIndex(initIdx);
+
+            stopYearPlay();
+            yearPlayTimer = setInterval(function () {
+                if (!isYearPlaying || !years.length) return;
+                var curr = slider ? Number(slider.value) : initIdx;
+                if (!isFinite(curr)) curr = 0;
+                var next = (curr + 1) % years.length;
+                if (slider) slider.value = next;
+                renderAtIndex(next);
+            }, YEAR_PLAY_INTERVAL);
     }
 
     function renderEmpty() {
+        stopYearPlay();
         myChart.setOption(buildHeatmapOption(0, 1, [], '-'), true);
         if (controlsEl) controlsEl.style.display = 'none';
     }
 
-    (function loadXlsx() {
-        fetch('data/map.xlsx')
-            .then(function (res) {
-                if (!res.ok) throw new Error('加载失败：' + res.status);
-                return res.arrayBuffer();
-            })
-            .then(function (buf) {
-                var rows = parseXlsxToRows(buf);
-                loadAndRenderFromRows(rows);
+    (function loadPanelCsv() {
+        loadProvincePanelRows()
+            .then(function (rows) {
+                var mapped = rows.map(function (r) {
+                    return {
+                        province: r.province,
+                        year: r.year,
+                        value: r.ote
+                    };
+                });
+                loadAndRenderFromRows(mapped);
             })
             .catch(function (e) {
-                // 兼容：如果你仍然保留了 map.csv，也可以作为降级数据源
-                $.get('data/map.csv')
-                    .done(function (csvText) {
-                        var rows = parseCsvSimple(csvText);
-                        loadAndRenderFromRows(rows);
-                    })
-                    .fail(function () {
-                        console && console.warn && console.warn('地图数据加载失败', e);
-                        renderEmpty();
-                    });
+                console && console.warn && console.warn('地图数据加载失败', e);
+                renderEmpty();
             });
     })();
 
@@ -921,11 +1022,11 @@ function wuran(){
         var maxVal = values.length ? Math.max.apply(null, values) : 0;
         var minVal = values.length ? Math.min.apply(null, values) : 0;
         var span = maxVal - minVal;
-        var pad = span > 1e-12 ? Math.max(span * 0.2, 1e-4) : 0.02;
+        var pad = span > 1e-12 ? Math.max(span * 0.08, 1e-4) : 0.02;
         var xMin = values.length ? minVal - pad : 0;
         var xMax = values.length ? maxVal + pad * 0.35 : 1;
         var bg = values.map(function () { return xMax; });
-        var colorGamma = 0.45;
+        var colorGamma = 0.28;
 
         function barColorByValue(v) {
             var r = span > 1e-12 ? (v - minVal) / span : 0.5;
@@ -978,7 +1079,7 @@ function wuran(){
                 data: values
 	    }],
 	    series: [{
-                name: 'D值',
+                name: 'PTE',
 	            type: 'bar',
 	            zlevel: 1,
 	            itemStyle: {
@@ -1009,57 +1110,29 @@ function wuran(){
         }, true);
     }
 
-    function parseTopDXlsx(buffer) {
-        if (!window.XLSX) throw new Error('XLSX 未加载');
-        var wb = window.XLSX.read(buffer, { type: 'array' });
-        var sheetName = wb.SheetNames && wb.SheetNames.length ? wb.SheetNames[0] : null;
-        if (!sheetName) return [];
-        var sheet = wb.Sheets[sheetName];
-        var rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
-        if (!rows || rows.length < 2) return [];
-
-        var header = (rows[0] || []).map(function (x) { return String(x || '').trim(); });
-        var hasHeader = header.some(function (h) { return /D|值|name|名称|地区|省/i.test(h); });
-        var start = hasHeader ? 1 : 0;
-
-        var nameCol = 0;
-        var dCol = (header.length > 0 ? header.length - 1 : -1);
-        if (hasHeader) {
-            for (var i = 0; i < header.length; i++) {
-                if (/name|名称|地区|省|企业/i.test(header[i])) { nameCol = i; break; }
-            }
-            for (var j = 0; j < header.length; j++) {
-                if (/^D$|D值|d值|耦合|score|value/i.test(header[j])) dCol = j;
-            }
-        }
-        if (dCol < 0) return [];
-
-        var list = [];
-        for (var r = start; r < rows.length; r++) {
-            var row = rows[r] || [];
-            var name = String(row[nameCol] || '').trim();
-            var dVal = Number(row[dCol]);
-            if (!name || !isFinite(dVal)) continue;
-            list.push({ name: name, value: dVal });
-        }
-        return list.sort(function (a, b) { return b.value - a.value; }).slice(0, 10);
+    function buildYearTop10(rows, year) {
+        var target = String(year || '').trim();
+        var list = rows
+            .filter(function (r) { return String(r.year) === target && isFinite(r.pte); })
+            .map(function (r) { return { name: String(r.province || '').trim(), value: Number(r.pte) }; })
+            .sort(function (a, b) { return a.value - b.value; })
+            .slice(0, 10);
+        return list;
     }
 
-    fetch(encodeURI('data/top-D.xlsx'))
-        .then(function (res) {
-            if (!res.ok) throw new Error('加载失败：' + res.status);
-            return res.arrayBuffer();
-        })
-        .then(function (buf) {
-            var top10 = parseTopDXlsx(buf);
-            if (!top10.length) return renderBar([], []);
-            renderBar(
-                top10.map(function (d) { return d.name; }),
-                top10.map(function (d) { return Number(d.value.toFixed(4)); })
-            );
+    loadProvincePanelRows()
+        .then(function (rows) {
+            watchProvinceYear(function (year) {
+                var top10 = buildYearTop10(rows, year);
+                if (!top10.length) return renderBar([], []);
+                renderBar(
+                    top10.map(function (d) { return d.name; }),
+                    top10.map(function (d) { return Number(d.value.toFixed(4)); })
+                );
+            });
         })
         .catch(function (e) {
-            console && console.warn && console.warn('top-D.xlsx 加载失败', e);
+            console && console.warn && console.warn('panel_data_tobit.csv 加载失败', e);
             renderBar([], []);
         });
 
@@ -1071,14 +1144,47 @@ function wuran(){
 function huaxing(){
     var myChart = echarts.init(document.getElementById('huaxing'));
 
+    function mixRgbStops(t) {
+        t = Math.max(0, Math.min(1, t));
+        var stops = [
+            { p: 0, rgb: [97, 63, 209] },
+            { p: 0.5, rgb: [0, 184, 217] },
+            { p: 1, rgb: [33, 212, 168] }
+        ];
+        var i;
+        for (i = 0; i < stops.length - 1; i++) {
+            if (t <= stops[i + 1].p) break;
+        }
+        var a = stops[i];
+        var b = stops[i + 1];
+        var u = (t - a.p) / (b.p - a.p || 1);
+        return [
+            Math.round(a.rgb[0] + (b.rgb[0] - a.rgb[0]) * u),
+            Math.round(a.rgb[1] + (b.rgb[1] - a.rgb[1]) * u),
+            Math.round(a.rgb[2] + (b.rgb[2] - a.rgb[2]) * u)
+        ];
+    }
+
     function renderBar(names, values) {
         var maxVal = values.length ? Math.max.apply(null, values) : 0;
         var minVal = values.length ? Math.min.apply(null, values) : 0;
         var span = maxVal - minVal;
-        var pad = span > 1e-12 ? Math.max(span * 0.2, 1e-4) : 0.02;
+        var pad = span > 1e-12 ? Math.max(span * 0.08, 1e-4) : 0.02;
         var xMin = values.length ? minVal - pad : 0;
         var xMax = values.length ? maxVal + pad * 0.35 : 1;
         var bg = values.map(function () { return xMax; });
+        var colorGamma = 0.32;
+
+        function barColorByValue(v) {
+            var r = span > 1e-12 ? (v - minVal) / span : 0.5;
+            r = Math.pow(Math.max(0, Math.min(1, r)), colorGamma);
+            var c0 = mixRgbStops(r * 0.9);
+            var c1 = mixRgbStops(Math.min(1, r * 0.9 + 0.1));
+            return new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0, color: 'rgb(' + c0.join(',') + ')' },
+                { offset: 1, color: 'rgb(' + c1.join(',') + ')' }
+            ]);
+        }
         myChart.setOption({
             grid: {
                 left: '3%',
@@ -1119,16 +1225,17 @@ function huaxing(){
                 data: values
             }],
             series: [{
-                name: 'OTE均值',
+                name: 'OTE',
                 type: 'bar',
                 zlevel: 1,
 	            itemStyle: {
 	                normal: {
                         barBorderRadius: 30,
-                        color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                            { offset: 0, color: 'rgb(97,63,209,1)' },
-                            { offset: 1, color: 'rgb(33,212,168,1)' }
-                        ])
+                        color: function (params) {
+                            var v = Number(params.data);
+                            if (!isFinite(v)) v = minVal;
+                            return barColorByValue(v);
+                        }
                     }
                 },
                 barWidth: 10,
@@ -1149,57 +1256,29 @@ function huaxing(){
         }, true);
     }
 
-    function parseOTEXlsx(buffer) {
-        if (!window.XLSX) throw new Error('XLSX 未加载');
-        var wb = window.XLSX.read(buffer, { type: 'array' });
-        var sheetName = wb.SheetNames && wb.SheetNames.length ? wb.SheetNames[0] : null;
-        if (!sheetName) return [];
-        var sheet = wb.Sheets[sheetName];
-        var rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
-        if (!rows || rows.length < 2) return [];
-
-        var header = (rows[0] || []).map(function (x) { return String(x || '').trim(); });
-        var hasHeader = header.some(function (h) { return /OTE|均值|省|地区|name|名称/i.test(h); });
-        var start = hasHeader ? 1 : 0;
-
-        var nameCol = 0;
-        var oteCol = (header.length > 0 ? header.length - 1 : -1);
-        if (hasHeader) {
-            for (var i = 0; i < header.length; i++) {
-                if (/name|名称|地区|省/i.test(header[i])) { nameCol = i; break; }
-            }
-            for (var j = 0; j < header.length; j++) {
-                if (/ote均值|OTE均值|ote均值值|OTE|均值/i.test(header[j])) { oteCol = j; break; }
-            }
-        }
-        if (oteCol < 0) return [];
-
-        var list = [];
-        for (var r = start; r < rows.length; r++) {
-            var row = rows[r] || [];
-            var name = String(row[nameCol] || '').trim();
-            var val = Number(row[oteCol]);
-            if (!name || !isFinite(val)) continue;
-            list.push({ name: name, value: val });
-        }
-        return list.sort(function (a, b) { return b.value - a.value; }).slice(0, 10);
+    function buildYearTop10(rows, year) {
+        var target = String(year || '').trim();
+        var list = rows
+            .filter(function (r) { return String(r.year) === target && isFinite(r.ote); })
+            .map(function (r) { return { name: String(r.province || '').trim(), value: Number(r.ote) }; })
+            .sort(function (a, b) { return a.value - b.value; })
+            .slice(0, 10);
+        return list;
     }
 
-    fetch(encodeURI('data/OTE排名.xlsx'))
-        .then(function (res) {
-            if (!res.ok) throw new Error('加载失败：' + res.status);
-            return res.arrayBuffer();
-        })
-        .then(function (buf) {
-            var top10 = parseOTEXlsx(buf);
-            if (!top10.length) return renderBar([], []);
-            renderBar(
-                top10.map(function (d) { return d.name; }),
-                top10.map(function (d) { return Number(d.value.toFixed(4)); })
-            );
+    loadProvincePanelRows()
+        .then(function (rows) {
+            watchProvinceYear(function (year) {
+                var top10 = buildYearTop10(rows, year);
+                if (!top10.length) return renderBar([], []);
+                renderBar(
+                    top10.map(function (d) { return d.name; }),
+                    top10.map(function (d) { return Number(d.value.toFixed(4)); })
+                );
+            });
         })
         .catch(function (e) {
-            console && console.warn && console.warn('OTE排名.xlsx 加载失败', e);
+            console && console.warn && console.warn('panel_data_tobit.csv 加载失败', e);
             renderBar([], []);
         });
 
@@ -1299,7 +1378,7 @@ function zhexian() {
 
     var legendNames = ['千人床位', '千人医师', '千人护士', '儿童管理率', '预期寿命'];
 
-    fetch(encodeURI('data/panel_data_tobit.csv'))
+    fetch(encodeURI('/data/province-screen/panel_data_tobit.csv'))
         .then(function (res) {
             if (!res.ok) throw new Error('加载失败：' + res.status);
             return res.text();
