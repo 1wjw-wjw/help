@@ -1,21 +1,3 @@
 {
-  "outputDirectory": "public_out",
-  "rewrites": [
-    {
-      "source": "/global-screen/(.*)",
-      "destination": "/global-screen/$1"
-    },
-    {
-      "source": "/china-screen/(.*)",
-      "destination": "/china-screen/$1"
-    },
-    {
-      "source": "/province-screen/(.*)",
-      "destination": "/province-screen/$1"
-    },
-    {
-      "source": "/",
-      "destination": "/global-screen/index.html"
-    }
-  ]
+  "outputDirectory": "public_out"
 }
