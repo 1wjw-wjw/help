@@ -91,7 +91,7 @@ function navigateToOtherScreen() {
     window.location.assign(`${protocol}//${hostname}:${CHINA_DEV_PORT}/`)
     return
   }
-  window.location.assign('/two_bigscreen/')
+  window.location.assign('/china-screen/')
 }
 
 function navigateToProvincesScreen() {
@@ -105,7 +105,7 @@ function navigateToProvincesScreen() {
     window.location.assign(`${protocol}//${hostname}:${PROVINCES_DEV_PORT}/`)
     return
   }
-  window.location.assign('/screen/')
+  window.location.assign('/province-screen/')
 }
 
 const WHO_REGION_MAP = {

@@ -234,7 +234,7 @@ const switchToGlobalScreen = () => {
     window.location.assign(`${protocol}//${hostname}:${GLOBAL_DEV_PORT}/`);
     return;
   }
-  window.location.assign('/bigbig_screen/');
+  window.location.assign('/global-screen/');
 };
 
 const switchToProvincesScreen = () => {
@@ -248,7 +248,7 @@ const switchToProvincesScreen = () => {
     window.location.assign(`${protocol}//${hostname}:${PROVINCES_DEV_PORT}/`);
     return;
   }
-  window.location.assign('/screen/');
+  window.location.assign('/province-screen/');
 };
 
 /** 安全解析数值，非法时返回 0 */

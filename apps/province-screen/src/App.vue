@@ -426,7 +426,7 @@ function navigateToGlobalScreen() {
     window.location.assign(`${protocol}//${hostname}:${GLOBAL_DEV_PORT}/`)
     return
   }
-  window.location.assign('/bigbig_screen/')
+  window.location.assign('/global-screen/')
 }
 
 function navigateToChinaScreen() {
@@ -440,7 +440,7 @@ function navigateToChinaScreen() {
     window.location.assign(`${protocol}//${hostname}:${CHINA_DEV_PORT}/`)
     return
   }
-  window.location.assign('/two_bigscreen/')
+  window.location.assign('/china-screen/')
 }
 
 const timeRef = ref(null)
