@@ -1,16 +1,17 @@
 {
+  "outputDirectory": "public_out",
   "rewrites": [
     {
       "source": "/global-screen/(.*)",
       "destination": "/global-screen/$1"
     },
     {
-      "source": "/two_bigscreen/(.*)",
-      "destination": "/two_bigscreen/$1"
+      "source": "/china-screen/(.*)",
+      "destination": "/china-screen/$1"
     },
     {
-      "source": "/three_bigscreen/(.*)",
-      "destination": "/three_bigscreen/$1"
+      "source": "/province-screen/(.*)",
+      "destination": "/province-screen/$1"
     },
     {
       "source": "/",
