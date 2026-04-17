@@ -1,8 +1,20 @@
 {
   "rewrites": [
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "source": "/global-screen/(.*)",
+      "destination": "/global-screen/$1"
+    },
+    {
+      "source": "/two_bigscreen/(.*)",
+      "destination": "/two_bigscreen/$1"
+    },
+    {
+      "source": "/three_bigscreen/(.*)",
+      "destination": "/three_bigscreen/$1"
+    },
+    {
+      "source": "/",
+      "destination": "/global-screen/index.html"
     }
   ]
 }
