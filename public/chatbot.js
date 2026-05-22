@@ -665,7 +665,7 @@
     messages.scrollTop = messages.scrollHeight
 
     try {
-      const API_BASE = 'https://web-production-0d4fe.up.railway.app'
+      const API_BASE = 'https://web-production-04481.up.railway.app'
       const res = await fetch(`${API_BASE}/api/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -679,7 +679,7 @@
       loadingMsg.innerHTML = '> RESPONSE_RECEIVED:<br/><br/>' + renderedAnswer
       loadingMsg.classList.remove('msg-loading')
     } catch (err) {
-      loadingMsg.innerHTML = '> CONNECTION_ERROR<br/>> SERVICE_OFFLINE<br/>> RETRY_LATER<br/><br/>URL: https://web-production-0d4fe.up.railway.app/'
+      loadingMsg.innerHTML = '> CONNECTION_ERROR<br/>> SERVICE_OFFLINE<br/>> RETRY_LATER<br/><br/>URL: https://web-production-04481.up.railway.app/'
       loadingMsg.classList.remove('msg-loading')
     }
     messages.scrollTop = messages.scrollHeight

@@ -223,7 +223,7 @@
     messages.scrollTop = messages.scrollHeight
 
     try {
-      const res = await fetch('https://web-production-0d4fe.up.railway.app/api/ask', {
+      const res = await fetch('https://web-production-04481.up.railway.app/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question })
@@ -233,7 +233,7 @@
       loadingMsg.innerHTML = answer
       loadingMsg.classList.remove('msg-loading')
     } catch (err) {
-      loadingMsg.textContent = '连接失败，请确保后端服务已启动 (https://web-production-0d4fe.up.railway.app)'
+      loadingMsg.textContent = '连接失败，请确保后端服务已启动 (https://web-production-04481.up.railway.app)'
       loadingMsg.classList.remove('msg-loading')
     }
     messages.scrollTop = messages.scrollHeight
